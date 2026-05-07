@@ -51,6 +51,7 @@ const allowIcmpPing = ref(false);
 const allowTcpPing = ref(false);
 const allowHttpPing = ref(false);
 const allowHttpRequest = ref(false);
+const allowSelfUpdate = ref(false);
 const allowWebShell = ref(false);
 const allowExecute = ref(false);
 const allowReadConfig = ref(false);
@@ -81,7 +82,8 @@ function syncFromConfig(config: splitConfig) {
     allowTcpPing.value = currentUpstream.allow_tcp_ping === true;
     allowHttpPing.value = currentUpstream.allow_http_ping === true;
     allowHttpRequest.value = currentUpstream.allow_http_request === true;
-    allowWebShell.value = currentUpstream.allow_web_shell === true;
+    ((allowSelfUpdate.value = currentUpstream.allow_self_update === true),
+      (allowWebShell.value = currentUpstream.allow_web_shell === true));
     allowExecute.value = currentUpstream.allow_execute === true;
     allowReadConfig.value = currentUpstream.allow_read_config === true;
     allowEditConfig.value = currentUpstream.allow_edit_config === true;
@@ -135,6 +137,7 @@ function buildConfig(): AgentConfig {
     allow_tcp_ping: allowTcpPing.value,
     allow_http_ping: allowHttpPing.value,
     allow_http_request: allowHttpRequest.value,
+    allow_self_update: allowSelfUpdate.value,
     allow_web_shell: allowWebShell.value,
     allow_execute: allowExecute.value,
     allow_read_config: allowReadConfig.value,
@@ -378,6 +381,12 @@ function confirmDisableEditConfig() {
                 $t("dashboard.node.config.featureHttpRequest")
               }}</span>
               <Switch v-model:modelValue="allowHttpRequest" />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">{{
+                $t("dashboard.node.config.featureSelfUpdate")
+              }}</span>
+              <Switch v-model:modelValue="allowSelfUpdate" />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{

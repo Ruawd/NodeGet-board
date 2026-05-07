@@ -139,6 +139,7 @@ const handleSave = async (newUpstream: UpstreamServer) => {
       allow_execute: true,
       allow_http_ping: true,
       allow_http_request: true,
+      allow_self_update: true,
       allow_icmp_ping: true,
       allow_ip: true,
       allow_read_config: true,

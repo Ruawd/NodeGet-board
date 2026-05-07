@@ -36,6 +36,7 @@ export const AGENT_PERMISSIONS: PermissionEntry[] = [
   { task: { write: "edit_config" } },
   { task: { write: "read_config" } },
   { task: { write: "http_request" } },
+  { task: { write: "self_update" } },
   { task: { write: "ip" } },
   { task: { write: "version" } },
 ];

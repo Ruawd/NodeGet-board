@@ -35,6 +35,7 @@ export interface UpstreamServer {
   allow_read_config?: boolean;
   allow_execute?: boolean;
   allow_http_request?: boolean;
+  allow_self_update?: boolean;
   allow_ip?: boolean;
   allow_version?: boolean;
 
@@ -100,6 +101,7 @@ function parseToml(tomlStr: string): AgentConfig {
         allow_read_config: false,
         allow_execute: false,
         allow_http_request: false,
+        allow_self_update: false,
         allow_ip: false,
         allow_version: false,
         ...server, // 用原始值覆盖默认值

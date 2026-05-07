@@ -543,6 +543,7 @@ export default {
         featureTcpPing: "tcp_ping",
         featureHttpPing: "http_ping",
         featureHttpRequest: "http_request",
+        featureSelfUpdate: "自我升级",
         featureWebShell: "web_shell",
         featureExecute: "execute",
         featureIp: "IP 信息",

@@ -287,7 +287,7 @@ function saveEdit(field: string) {
         <TabsTrigger value="config">{{
           t("dashboard.servers.detail.tabConfig")
         }}</TabsTrigger>
-        <TabsTrigger value="version">{{
+        <TabsTrigger value="version" v-if="false">{{
           t("dashboard.servers.detail.tabVersion")
         }}</TabsTrigger>
       </TabsList>
@@ -692,7 +692,7 @@ function saveEdit(field: string) {
       </TabsContent>
 
       <!-- Tab: 版本升级 -->
-      <TabsContent value="version" class="mt-4">
+      <TabsContent value="version" class="mt-4" v-if="false">
         <div
           class="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground"
         >

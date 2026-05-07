@@ -26,6 +26,10 @@ export interface HttpRequestTask {
   };
 }
 
+export interface SelfUpdateTask {
+  self_update: string;
+}
+
 export interface WebShellTask {
   web_shell: {
     url: string;
@@ -55,6 +59,7 @@ export type TaskEventType =
   | TcpPingTask
   | HttpPingTask
   | HttpRequestTask
+  | SelfUpdateTask
   | WebShellTask
   | ExecuteTask
   | ReadConfigTask
@@ -82,6 +87,10 @@ export interface HttpRequestResult {
     body?: string;
     body_base64?: string;
   };
+}
+
+export interface SelfUpdateResult {
+  self_update: boolean;
 }
 
 export interface WebShellResult {
@@ -127,6 +136,7 @@ export type TaskEventResult =
   | TcpPingResult
   | HttpPingResult
   | HttpRequestResult
+  | SelfUpdateResult
   | WebShellResult
   | ExecuteResult
   | ReadConfigResult
@@ -361,6 +371,18 @@ export function useTask(backend = useBackendStore().currentBackend) {
       : createTask(targetUuid, taskType);
   };
 
+  const createSelfUpdateTask = async (
+    targetUuid: string,
+    version: string,
+    blocking: boolean = false,
+    timeoutMs?: number,
+  ): Promise<CreateTaskResponse | CreateTaskBlockingResponse> => {
+    const taskType: SelfUpdateTask = { self_update: version };
+    return blocking
+      ? createTaskBlocking(targetUuid, taskType, timeoutMs)
+      : createTask(targetUuid, taskType);
+  };
+
   const createExecuteTask = async (
     targetUuid: string,
     cmd: string,
@@ -446,6 +468,7 @@ export function useTask(backend = useBackendStore().currentBackend) {
     createTcpPingTask,
     createHttpPingTask,
     createHttpRequestTask,
+    createSelfUpdateTask,
     createExecuteTask,
     createWebShellTask,
     createReadConfigTask,

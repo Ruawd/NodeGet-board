@@ -546,6 +546,7 @@ export default {
         featureTcpPing: "tcp_ping",
         featureHttpPing: "http_ping",
         featureHttpRequest: "http_request",
+        featureSelfUpdate: "Self Update",
         featureWebShell: "web_shell",
         featureExecute: "execute",
         featureIp: "IP Info",
