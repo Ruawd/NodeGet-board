@@ -78,11 +78,10 @@ const changeVersionOpen = ref(false);
 const availableVersions = ref<string[]>([]);
 const pendingUpdateUUIDs = ref<string[]>([]);
 
-const installScript = ref(
-  `
+const installScript = ref(`
 grep -q 'allow_self_update' /etc/nodeget-agent.conf || \\
 sed -i '/^allow_task = true$/a allow_self_update = true' /etc/nodeget-agent.conf
-nohup bash <(curl -sL https://install.nodeget.com) update-agent > /dev/null 2>&1 < /dev/null &
+nohup bash <(curl -sL https://install.nodeget.com | sed  '/^set -e/a sleep 1') update-agent > /dev/null 2>&1 < /dev/null &
 echo "升级成功"
 `.trim(),
 );
