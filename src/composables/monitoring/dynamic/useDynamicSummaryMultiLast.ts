@@ -3,19 +3,18 @@ import { useBackendStore } from "@/composables/useBackendStore";
 import { getWsConnection } from "@/composables/useWsConnection";
 import { getAgentInfoFromPool } from "@/composables/useAgentInfo";
 import { useInFlightDedupe } from "@/composables/useInFlightDedupe";
-import type { FullDynamicMonitoringSummaryData } from "@/types/monitoring";
+import type { FullDynamicSummaryResponseItem } from "@/types/monitoring";
 import { DYNAMIC_SUMMARY_FIELDS } from "@/types/monitoring";
+import { OFFLINE_AFTER_MS } from "@/utils/show";
+
+type FullDynamicSummaryResponseItemWithOnline =
+  FullDynamicSummaryResponseItem & {
+    online: boolean;
+  };
 
 /*
-获取节点的动态数据，包括
-
-- 所有节点的最新动态摘要
-
-- 某个节点的动态摘要历史
-- 某个节点的动态数据历史
-- 某个节点的最新动态数据
+  获取所有节点的最新动态摘要
 */
-
 export function useDynamicSummaryMultiLast(
   backend = useBackendStore().currentBackend,
 ) {
@@ -23,7 +22,7 @@ export function useDynamicSummaryMultiLast(
     "disconnected",
   );
   const error = ref("");
-  const servers = ref<FullDynamicMonitoringSummaryData[]>([]);
+  const servers = ref<FullDynamicSummaryResponseItemWithOnline[]>([]);
   const queryFields = DYNAMIC_SUMMARY_FIELDS;
   const agentInfo = getAgentInfoFromPool(backend);
   const { fetchAgents, agents } = agentInfo;
@@ -42,17 +41,23 @@ export function useDynamicSummaryMultiLast(
         return;
       }
 
-      status.value = "connecting";
+      if (status.value === "disconnected") {
+        status.value = "connecting";
+      }
       error.value = "";
       const result = await getWsConnection(backend.value.url).call<
-        FullDynamicMonitoringSummaryData[]
+        FullDynamicSummaryResponseItem[]
       >("agent_dynamic_summary_multi_last_query", {
         token: backend.value.token,
         uuids: uuids,
         fields: queryFields,
       });
+      const clientTime = Date.now();
       if (Array.isArray(result)) {
-        servers.value = result;
+        servers.value = result.map((v) => ({
+          ...v,
+          online: clientTime - v.timestamp < OFFLINE_AFTER_MS,
+        }));
         status.value = "connected";
       } else {
         status.value = "disconnected";

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
-import { useDynamicData } from "@/composables/useDynamicData";
-import { useStaticData } from "@/composables/useStaticData";
+import { onMounted, computed } from "vue";
+// import { useAgentStatus } from "@/composables/useAgentStatus";
+// import { useStaticMonitoring } from "@/composables/monitoring/useStaticMonitoring";
+import { useRoute } from "vue-router";
 
 definePage({
   redirect: (to) =>
@@ -12,19 +13,24 @@ definePage({
   },
 });
 
-const { connect: connectDynamic } = useDynamicData();
-const { connect: connectStatic } = useStaticData();
-
-onMounted(() => {
-  connectDynamic();
-  connectStatic();
+const route = useRoute();
+const currentAgentUUID = computed(() => {
+  return (route.params as { uuid: string })?.uuid;
 });
+
+// const { connect: connectDynamic } = useAgentStatus();
+// const { refresh: connectStatic } = useStaticMonitoring();
+
+// onMounted(() => {
+//   connectDynamic();
+//   connectStatic();
+// });
 </script>
 
 <template>
   <div class="h-full flex flex-col gap-2">
     <div class="flex-1 overflow-hidden min-h-0">
-      <router-view />
+      <router-view :key="currentAgentUUID" v-if="currentAgentUUID" />
     </div>
   </div>
 </template>

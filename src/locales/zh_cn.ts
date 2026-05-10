@@ -586,7 +586,7 @@ export default {
       title: "主控管理",
       desc: "管理并切换 NodeGet 主控后端。",
       addServer: "添加主控",
-      addServerLoading: "添加主控并初始化，请不要理开",
+      addServerLoading: "添加主控并初始化，请不要离开",
       colName: "名称",
       colId: "ID",
       colEndpoint: "API 地址",

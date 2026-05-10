@@ -48,6 +48,7 @@ export interface OverviewServer {
   longitude?: number | null;
   tags: string[];
   order: number;
+  online: boolean;
 }
 
 // ============ State Management ============
@@ -57,14 +58,11 @@ const { currentBackend } = useBackendStore();
 const servers = ref<OverviewServer[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
-const inactive = ref(false);
 
 // Polling lifecycle management
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let staticPollTimer: ReturnType<typeof setInterval> | null = null;
-let visibilityListenerAttached = false;
-let refCount = 0;
-let lastFetchTime = 0;
+const lastFetchTime = ref(-1);
 
 // ============ Helper Functions ============
 
@@ -135,28 +133,8 @@ function buildOverviewServers(
       longitude: meta.longitude,
       tags: meta.tags,
       order: meta.order,
+      online: d.online as boolean,
     };
-  });
-}
-
-/**
- * 附加可见性变化监听器
- */
-function attachVisibilityListener(onVisible: () => void) {
-  if (visibilityListenerAttached || typeof document === "undefined") {
-    return;
-  }
-
-  visibilityListenerAttached = true;
-  document.addEventListener("visibilitychange", () => {
-    if (refCount <= 0) return;
-
-    if (document.visibilityState === "hidden") {
-      inactive.value = true;
-    } else {
-      inactive.value = false;
-      onVisible();
-    }
   });
 }
 
@@ -241,7 +219,7 @@ export function useOverviewData() {
         dynamicMonitoring.refresh(uuids.value),
       ]);
 
-      lastFetchTime = Date.now();
+      lastFetchTime.value = Date.now();
 
       // Merge all data sources
       servers.value = buildOverviewServers(
@@ -274,15 +252,7 @@ export function useOverviewData() {
         document.visibilityState === "visible";
 
       await dynamicMonitoring.refresh(uuids.value);
-      lastFetchTime = Date.now();
-
-      if (
-        startedVisible &&
-        (typeof document === "undefined" ||
-          document.visibilityState === "visible")
-      ) {
-        inactive.value = false;
-      }
+      lastFetchTime.value = Date.now();
 
       // Merge data
       servers.value = buildOverviewServers(
@@ -329,14 +299,6 @@ export function useOverviewData() {
     }
   };
 
-  // Attach visibility listener
-  attachVisibilityListener(() => void fetchDynamic());
-
-  // Check offline state
-  if (lastFetchTime && Date.now() - lastFetchTime >= OFFLINE_AFTER_MS) {
-    servers.value = [];
-  }
-
   /**
    * Public refresh function
    */
@@ -348,13 +310,9 @@ export function useOverviewData() {
    * Start monitoring with polling
    */
   const start = async () => {
-    refCount++;
     if (pollTimer) return; // Already running
 
     await fetchAll();
-
-    // Safety check: refCount might have changed during await
-    if (refCount <= 0 || pollTimer) return;
 
     startPolling(
       () => fetchDynamic(),
@@ -366,11 +324,8 @@ export function useOverviewData() {
    * Stop monitoring and polling
    */
   const stop = () => {
-    refCount--;
-    if (refCount > 0) return; // Other components still using it
-
     stopPolling();
   };
 
-  return { servers, loading, error, inactive, start, stop, refresh };
+  return { servers, loading, error, start, stop, refresh };
 }

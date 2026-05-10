@@ -16,7 +16,6 @@ import {
   showDiskUsage,
   showDiskPercent,
   showDiskDisplay,
-  isOnline,
   distroLogo,
   virtLabel,
   flagUrl,
@@ -65,8 +64,9 @@ definePage({
 
 const router = useRouter();
 
-const { servers, loading, error, inactive, start, stop, refresh } =
-  useOverviewData();
+const { servers, loading, error, start, stop, refresh } = useOverviewData();
+
+const inactive = ref(false);
 
 const selectedTag = ref("all");
 
@@ -86,8 +86,13 @@ const filteredServers = computed(() => {
   return [...list].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 });
 
+function isOnline(server: (typeof servers.value)[0]) {
+  return server.online;
+}
+
 onMounted(() => {
   start();
+  // attachVisibilityListener()
 });
 
 onUnmounted(() => {
@@ -100,6 +105,24 @@ const goToServerDetail = (uuid: string) => {
     params: { uuid },
   });
 };
+
+// let visibilityListenerAttached = false
+// function attachVisibilityListener(onVisible = () => undefined) {
+//   if (visibilityListenerAttached || typeof document === "undefined") {
+//     return;
+//   }
+
+//   visibilityListenerAttached = true;
+//   document.addEventListener("visibilitychange", () => {
+
+//     if (document.visibilityState === "hidden") {
+//       inactive.value = true;
+//     } else {
+//       inactive.value = false;
+//       onVisible();
+//     }
+//   });
+// }
 </script>
 
 <template>
@@ -185,7 +208,7 @@ const goToServerDetail = (uuid: string) => {
             v-for="server in filteredServers"
             :key="server.uuid"
             class="cursor-pointer hover:bg-muted/50 transition-colors"
-            :class="{ 'opacity-60': !inactive && !isOnline(server) }"
+            :class="{ 'opacity-60': !isOnline(server) }"
             @click="goToServerDetail(server.uuid)"
           >
             <!-- Online dot -->

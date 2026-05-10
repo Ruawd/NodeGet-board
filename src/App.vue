@@ -8,6 +8,7 @@ import { useBackendStore } from "@/composables/useBackendStore";
 import { usePermissionStore } from "@/stores/permission";
 import { getWsConnection } from "@/composables/useWsConnection";
 import { useRouter, useRoute } from "vue-router";
+import "@/utils/detectUpdate";
 
 const router = useRouter();
 const route = useRoute();

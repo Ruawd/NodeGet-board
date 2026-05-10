@@ -3,7 +3,7 @@ import { useBackendStore } from "@/composables/useBackendStore";
 import { getWsConnection } from "@/composables/useWsConnection";
 import type { StaticResponseItem } from "@/types/monitoring";
 import { getAgentInfoFromPool } from "@/composables/useAgentInfo";
-import { Deferred } from "@/lib/Defered";
+import { useInFlightDedupe } from "@/composables/useInFlightDedupe";
 
 /*
 获取节点的最新静态数据
@@ -18,15 +18,13 @@ export function useStaticMonitoring(
   const error = ref("");
   const servers = ref<StaticResponseItem[]>([]);
   const queryFields = ["cpu", "system", "gpu"];
-  const { agents } = getAgentInfoFromPool(backend);
-  const loading = ref(false);
-  let deferred: null | Deferred = null;
+  const { agents, fetchAgents } = getAgentInfoFromPool(backend);
 
-  async function refresh(uuids: string[] = []) {
+  async function _refresh(uuids: string[] = []) {
     try {
       if (uuids.length === 0) {
         if (agents.value.length === 0) {
-          return;
+          await fetchAgents();
         }
         uuids = agents.value.map((v) => v.uuid);
       }
@@ -35,8 +33,6 @@ export function useStaticMonitoring(
         status.value = "disconnected";
         return;
       }
-      loading.value = true;
-      deferred = new Deferred();
 
       status.value = "connecting";
       error.value = "";
@@ -58,13 +54,10 @@ export function useStaticMonitoring(
       error.value = e instanceof Error ? e.message : String(e);
       status.value = "disconnected";
     } finally {
-      loading.value = false;
-      if (deferred !== null) {
-        deferred.resolve();
-        deferred = null;
-      }
     }
   }
+
+  const { execute: refresh, isLoading: loading } = useInFlightDedupe(_refresh);
 
   watch(
     backend,
@@ -82,5 +75,6 @@ export function useStaticMonitoring(
     error,
     servers,
     refresh,
+    loading,
   };
 }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, ref, watch } from "vue";
 import { toast } from "vue-sonner";
-import { useDynamicData } from "@/composables/useDynamicData";
-import { useStaticData } from "@/composables/useStaticData";
+import { useAgentStatus } from "@/composables/useAgentStatus";
+import { useStaticMonitoring } from "@/composables/monitoring/useStaticMonitoring";
 import { useKv } from "@/composables/useKv";
 import { formatBytes, formatLoad } from "@/utils/format";
 import { showCpuPercent, showRamPercent, showRamText } from "@/utils/show";
@@ -37,12 +37,12 @@ const {
   error: dynamicError,
   status: dynamicStatus,
   servers: dynamicServers,
-  connect: connectDynamic,
-  fetchSummaryAvg,
+  fetchDynamicSummary,
   fetchDynamic,
-} = useDynamicData();
+} = useAgentStatus();
 
-const { servers: staticServers, connect: connectStatic } = useStaticData();
+const { servers: staticServers, refresh: connectStatic } =
+  useStaticMonitoring();
 
 const activeTab = ref("cpu");
 
@@ -465,7 +465,7 @@ const fetchTabAvg = async (tab: TabId, showLoading = true) => {
   try {
     const groups = await Promise.all(
       TAB_FIELDS_AVG[tab].map((fields) =>
-        fetchSummaryAvg(
+        fetchDynamicSummary(
           uuid.value,
           { timestamp_from: from, timestamp_to: now },
           fields,
@@ -548,7 +548,6 @@ const liveColor = computed(() => {
 });
 
 onMounted(() => {
-  connectDynamic();
   connectStatic();
   fetchDatabaseLimits();
 });

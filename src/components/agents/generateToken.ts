@@ -1,7 +1,7 @@
 import { useBackendStore } from "@/composables/useBackendStore";
 import { getWsConnection } from "@/composables/useWsConnection";
 import { AGENT_PERMISSIONS } from "@/components/token/tokenPermissionTemplates";
-import { generatePassword } from "@/lib/psssword";
+import { generatePassword } from "@/lib/password";
 
 const { currentBackend } = useBackendStore();
 // 预生成 token

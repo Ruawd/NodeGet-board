@@ -1,37 +1,9 @@
-export interface DynamicMonitoringSummaryData {
-  uuid: string;
-  time: number;
-  cpu_usage?: number;
-  gpu_usage?: number;
-  used_swap?: number;
-  total_swap?: number;
-  used_memory?: number;
-  total_memory?: number;
-  available_memory?: number;
-  load_one?: number;
-  load_five?: number;
-  load_fifteen?: number;
-  uptime?: number;
-  boot_time?: number;
-  process_count?: number;
-  total_space?: number;
-  available_space?: number;
-  read_speed?: number;
-  write_speed?: number;
-  tcp_connections?: number;
-  udp_connections?: number;
-  total_received?: number;
-  total_transmitted?: number;
-  transmit_speed?: number;
-  receive_speed?: number;
-}
-
 type StrictRequired<T> = {
   [K in keyof T]-?: NonNullable<T[K]>;
 };
 
-export type FullDynamicMonitoringSummaryData =
-  StrictRequired<DynamicMonitoringSummaryData>;
+export type FullDynamicSummaryResponseItem =
+  StrictRequired<DynamicSummaryResponseItem>;
 
 export interface DynamicSummaryResponseItem {
   uuid: string;
@@ -95,8 +67,8 @@ export interface StaticResponseItem {
 }
 
 export type SummaryField = keyof Omit<
-  DynamicMonitoringSummaryData,
-  "uuid" | "time"
+  DynamicSummaryResponseItem,
+  "uuid" | "timestamp"
 >;
 
 export interface DynamicCpuCore {

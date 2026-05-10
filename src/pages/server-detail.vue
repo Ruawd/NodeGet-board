@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useDynamicData } from "@/composables/useDynamicData";
-import { useStaticData } from "@/composables/useStaticData";
+import { useAgentStatus } from "@/composables/useAgentStatus";
+import { useStaticMonitoring } from "@/composables/monitoring/useStaticMonitoring";
 import { colors } from "@/composables/color";
 import {
   formatLoad,
@@ -66,12 +66,12 @@ const {
   status: dynamicStatus,
   error: dynamicError,
   servers: dynamicServers,
-  connect: connectDynamic,
   fetchDynamic,
-  fetchSummaryAvg,
-} = useDynamicData();
+  fetchDynamicSummary,
+} = useAgentStatus();
 
-const { servers: staticServers, connect: connectStatic } = useStaticData();
+const { servers: staticServers, refresh: connectStatic } =
+  useStaticMonitoring();
 
 const activeTab = ref("cpu");
 
@@ -135,7 +135,7 @@ const loadHistory = async () => {
   try {
     const now = Date.now();
     const from = now - 10 * 60 * 1000;
-    const res = await fetchSummaryAvg(
+    const res = await fetchDynamicSummary(
       uuid,
       { timestamp_from: from, timestamp_to: now },
       ["cpu_usage"],
@@ -270,7 +270,6 @@ watch(activeTab, (tab) => {
 });
 
 onMounted(() => {
-  connectDynamic();
   connectStatic();
 });
 
