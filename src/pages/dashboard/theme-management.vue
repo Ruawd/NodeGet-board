@@ -24,7 +24,9 @@ import { base64ToBuf } from "@/utils/base64";
 import type { StaticBucket } from "@/composables/useStaticBucket";
 import ThemeTokenPresetDialog from "@/components/theme-management/ThemeTokenPresetDialog.vue";
 import ThemeUploadLocalDialog from "@/components/theme-management/ThemeUploadLocalDialog.vue";
-import ThemeRemoteImportDialog from "@/components/theme-management/ThemeRemoteImportDialog.vue";
+import ThemeRemoteImportDialog, {
+  type TokenPresetChoice,
+} from "@/components/theme-management/ThemeRemoteImportDialog.vue";
 
 definePage({
   meta: {
@@ -51,6 +53,8 @@ const uploadLocalOpen = ref(false);
 const remoteImportOpen = ref(false);
 const remoteImportInitialUrl = ref("");
 const remoteImportTarget = ref<string | null>(null);
+const remoteImportAutoEnable = ref(true);
+const remoteImportTokenPreset = ref<TokenPresetChoice>("monitor_ping");
 const uploadLocalTarget = ref<string | null>(null);
 const togglingBucket = ref<string | null>(null);
 const deletingBucket = ref<string | null>(null);
@@ -114,8 +118,24 @@ onMounted(async () => {
   const addUrl = route.query.add;
   if (typeof addUrl === "string" && addUrl) {
     remoteImportInitialUrl.value = addUrl;
+
+    const autoEnableParam = route.query.auto_enable;
+    remoteImportAutoEnable.value =
+      autoEnableParam !== "0" && autoEnableParam !== "false";
+
+    const tokenPresetParam = route.query.token_preset;
+    const validPresets: TokenPresetChoice[] = [
+      "monitor_only",
+      "monitor_ping",
+      "none",
+    ];
+    remoteImportTokenPreset.value = validPresets.includes(
+      tokenPresetParam as TokenPresetChoice,
+    )
+      ? (tokenPresetParam as TokenPresetChoice)
+      : "monitor_ping";
+
     remoteImportOpen.value = true;
-    router.replace({ query: { ...route.query, add: undefined } });
   }
 });
 
@@ -171,6 +191,17 @@ const onUploadDone = async () => {
   await staticBucket.fetchList();
 };
 
+watch([remoteImportAutoEnable, remoteImportTokenPreset], ([ae, tp]) => {
+  if (!remoteImportOpen.value || remoteImportTarget.value) return;
+  router.replace({
+    query: {
+      ...route.query,
+      auto_enable: ae ? undefined : "0",
+      token_preset: tp === "monitor_ping" ? undefined : tp,
+    },
+  });
+});
+
 const downloadBucketZip = bucketFile.downloadBucketZip;
 
 function getPrevieLink(bucket: StaticBucket): string {
@@ -207,6 +238,8 @@ function getPrevieLink(bucket: StaticBucket): string {
           size="sm"
           @click="
             remoteImportTarget = null;
+            remoteImportAutoEnable = true;
+            remoteImportTokenPreset = 'monitor_ping';
             remoteImportOpen = true;
           "
         >
@@ -369,6 +402,8 @@ function getPrevieLink(bucket: StaticBucket): string {
       v-model:open="remoteImportOpen"
       :initial-url="remoteImportInitialUrl"
       :target-bucket="remoteImportTarget"
+      v-model:auto-enable="remoteImportAutoEnable"
+      v-model:token-preset="remoteImportTokenPreset"
       @done="onUploadDone"
     />
   </div>

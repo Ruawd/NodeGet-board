@@ -12,28 +12,40 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { bufToBase64 } from "@/utils/base64";
 import { useStaticBucket } from "@/composables/useStaticBucket";
+import { useStaticBucketFile } from "@/composables/useStaticBucketFile";
 import {
   useThemeBucketUpload,
   type KeepPolicy,
   type UploadEntry,
   DEFAULT_KEEP_POLICY,
 } from "@/composables/useThemeBucketUpload";
+import { useThemeTokenPresets } from "@/composables/useThemeTokenPresets";
+
+export type TokenPresetChoice = "monitor_only" | "monitor_ping" | "none";
 
 const props = defineProps<{
   open: boolean;
   initialUrl?: string;
   targetBucket?: string | null;
+  autoEnable?: boolean;
+  tokenPreset?: TokenPresetChoice;
 }>();
 
 const emit = defineEmits<{
   "update:open": [value: boolean];
   done: [];
+  "update:autoEnable": [value: boolean];
+  "update:tokenPreset": [value: TokenPresetChoice];
 }>();
 
 const sb = useStaticBucket();
+const sbf = useStaticBucketFile();
 const { uploadToBucket } = useThemeBucketUpload();
+const { loadOrInitPresets } = useThemeTokenPresets();
 
 type Step =
   | "idle"
@@ -41,6 +53,8 @@ type Step =
   | "creating-bucket"
   | "fetching-files"
   | "uploading"
+  | "applying-preset"
+  | "enabling"
   | "done"
   | "error";
 
@@ -52,6 +66,8 @@ const detectedThemeName = ref<string | null>(null);
 const isUpdate = ref(false);
 
 const keepPolicy = ref<KeepPolicy>({ ...DEFAULT_KEEP_POLICY });
+const autoEnable = ref(true);
+const tokenPresetChoice = ref<TokenPresetChoice>("monitor_ping");
 
 const isImporting = computed(
   () =>
@@ -64,6 +80,8 @@ const stepLabel: Record<Step, string> = {
   "creating-bucket": "正在准备 Bucket...",
   "fetching-files": "正在获取文件列表...",
   uploading: "正在上传文件",
+  "applying-preset": "正在应用 Token 预设...",
+  enabling: "正在启用主题...",
   done: "导入完成",
   error: "导入失败",
 };
@@ -78,9 +96,14 @@ watch([() => props.open, () => props.initialUrl], ([open, url], [prevOpen]) => {
       detectedThemeName.value = null;
       isUpdate.value = !!props.targetBucket;
       keepPolicy.value = { ...DEFAULT_KEEP_POLICY };
+      autoEnable.value = props.autoEnable ?? true;
+      tokenPresetChoice.value = props.tokenPreset ?? "monitor_ping";
     }
   }
 });
+
+watch(autoEnable, (val) => emit("update:autoEnable", val));
+watch(tokenPresetChoice, (val) => emit("update:tokenPreset", val));
 
 const normalizeFileList = (raw: unknown): string[] => {
   if (!Array.isArray(raw)) return [];
@@ -202,6 +225,64 @@ const handleImport = async () => {
     });
 
     const failedCount = downloadFailed + uploadFailed;
+
+    if (!isUpdate.value) {
+      if (tokenPresetChoice.value !== "none") {
+        step.value = "applying-preset";
+        try {
+          const presets = await loadOrInitPresets();
+          const targetName =
+            tokenPresetChoice.value === "monitor_ping"
+              ? "本机 监控+ping"
+              : "本机 纯监控";
+          const preset = presets.find((p) => p.name === targetName);
+          if (preset) {
+            const configText = await sbf.readTextFile(
+              bucketName,
+              "config.json",
+            );
+            if (!configText) {
+              toast.warning("Token 预设应用失败：未能读取主题配置文件");
+            } else {
+              const config = JSON.parse(configText) as Record<string, unknown>;
+              config.site_tokens = [
+                {
+                  name: preset.name,
+                  backend_url: preset.backend_url,
+                  token: preset.token,
+                },
+              ];
+              await sbf.saveTextFile(
+                bucketName,
+                "config.json",
+                JSON.stringify(config, null, 2),
+              );
+            }
+          }
+        } catch (e) {
+          toast.warning(
+            `Token 预设应用失败：${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+
+      if (autoEnable.value) {
+        step.value = "enabling";
+        try {
+          await sb.updateBucket({
+            name: bucketName,
+            path: bucketName,
+            is_http_root: true,
+            cors: true,
+          });
+        } catch (e) {
+          toast.warning(
+            `自动启用失败：${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+    }
+
     step.value = "done";
     emit("done");
     emit("update:open", false);
@@ -241,6 +322,56 @@ const handleImport = async () => {
           <p class="text-xs text-muted-foreground">
             将自动拉取该站点的 nodeget-theme.json 和 nodeget-theme-files.json
           </p>
+        </div>
+
+        <div
+          v-if="!targetBucket"
+          class="rounded-md border overflow-hidden text-sm"
+        >
+          <div class="bg-muted px-3 py-1.5 font-medium text-xs">安装选项</div>
+          <div class="divide-y">
+            <div class="flex items-center justify-between px-3 py-2">
+              <span>安装后自动启用</span>
+              <Switch v-model:modelValue="autoEnable" :disabled="isImporting" />
+            </div>
+            <div class="flex items-center justify-between px-3 py-2">
+              <span>Token 预设</span>
+              <RadioGroup
+                v-model="tokenPresetChoice"
+                :disabled="isImporting"
+                class="flex items-center gap-4"
+              >
+                <div class="flex items-center gap-1.5">
+                  <RadioGroupItem
+                    id="preset-monitor-only"
+                    value="monitor_only"
+                  />
+                  <Label
+                    for="preset-monitor-only"
+                    class="font-normal cursor-pointer"
+                    >纯监控</Label
+                  >
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <RadioGroupItem
+                    id="preset-monitor-ping"
+                    value="monitor_ping"
+                  />
+                  <Label
+                    for="preset-monitor-ping"
+                    class="font-normal cursor-pointer"
+                    >监控+ping</Label
+                  >
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <RadioGroupItem id="preset-none" value="none" />
+                  <Label for="preset-none" class="font-normal cursor-pointer"
+                    >不使用预设</Label
+                  >
+                </div>
+              </RadioGroup>
+            </div>
+          </div>
         </div>
 
         <div
