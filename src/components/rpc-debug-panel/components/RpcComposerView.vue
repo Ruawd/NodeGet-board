@@ -13,6 +13,11 @@ import {
 import { backendKey, methodCatalog, methodHints } from "../helpers";
 import type { ComposerDraft } from "../types";
 
+interface ComposerSourceRecord {
+  recordId: string;
+  method: string;
+}
+
 const props = defineProps<{
   pendingRecord?: RpcDebugRecord | null;
 }>();
@@ -20,11 +25,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   copied: [message?: string];
   consumedRecord: [];
+  showSourceRecord: [recordId: string];
 }>();
 
 const debugStore = useRpcDebugStore();
 const backendStore = useBackendStore();
 const methodFocused = ref(false);
+const composerSource = ref<ComposerSourceRecord | null>(null);
 
 const backendOptions = computed(() => backendStore.backends.value);
 const currentBackendKey = computed(() =>
@@ -54,6 +61,18 @@ const filteredMethodSuggestions = computed(() => {
     .slice(0, 6);
 });
 
+const sourceRecordIndex = computed(() => {
+  if (!composerSource.value) return null;
+  const index = debugStore.records.value.findIndex(
+    (record) => record.recordId === composerSource.value?.recordId,
+  );
+  return index >= 0 ? index + 1 : null;
+});
+
+const sourceRecordLinkText = computed(() =>
+  sourceRecordIndex.value ? `#${sourceRecordIndex.value}` : "#?",
+);
+
 watch(
   currentBackendKey,
   (key) => {
@@ -74,6 +93,12 @@ watch(
       typeof req?.method === "string" ? req.method : record.method;
     composer.requestId = "";
     composer.paramsText = formatDebugPayload(req?.params ?? {});
+    composer.responseText = "尚未发送请求";
+    composer.responseMeta = "等待发送";
+    composerSource.value = {
+      recordId: record.recordId,
+      method: record.method,
+    };
     emit("consumedRecord");
   },
   { immediate: true },
@@ -103,7 +128,13 @@ function clearComposerDraft() {
   composer.paramsText = "";
   composer.responseText = "尚未发送请求";
   composer.responseMeta = "等待发送";
+  composerSource.value = null;
   methodFocused.value = false;
+}
+
+function showSourceRecord() {
+  if (!composerSource.value) return;
+  emit("showSourceRecord", composerSource.value.recordId);
 }
 
 function fillDefaultParams() {
@@ -181,6 +212,35 @@ async function sendComposerRequest() {
   <div class="grid min-h-[620px] gap-6 p-6 lg:grid-cols-[520px_minmax(0,1fr)]">
     <section class="rounded-lg border p-5">
       <div
+        v-if="composerSource"
+        class="mb-5 flex items-start justify-between gap-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/35 dark:text-blue-100"
+      >
+        <div class="min-w-0 leading-6">
+          已从网络记录
+          <button
+            class="font-semibold text-blue-700 underline-offset-4 transition hover:underline dark:text-blue-300"
+            type="button"
+            @click="showSourceRecord"
+          >
+            {{ sourceRecordLinkText }}
+          </button>
+          带入：<span class="font-mono text-xs">{{
+            composerSource.method
+          }}</span
+          >。你可以修改参数后重新发送。
+        </div>
+        <button
+          class="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-md border border-blue-200 bg-white px-2.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:pointer-events-none disabled:opacity-50 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200 dark:hover:bg-blue-900"
+          type="button"
+          :disabled="composer.sending"
+          @click="clearComposerDraft"
+        >
+          <Trash2 class="size-3.5" />
+          清除带入
+        </button>
+      </div>
+      <div
+        v-else
         class="mb-5 rounded-md border bg-muted/35 px-4 py-3 text-sm text-muted-foreground"
       >
         从网络详情点击“编辑并重新构造”会自动带入方法和参数。
@@ -274,15 +334,6 @@ async function sendComposerRequest() {
           >
             <Copy class="size-4" />
             复制 JSON
-          </button>
-          <button
-            class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
-            type="button"
-            :disabled="composer.sending"
-            @click="clearComposerDraft"
-          >
-            <Trash2 class="size-4" />
-            清空
           </button>
         </div>
       </div>

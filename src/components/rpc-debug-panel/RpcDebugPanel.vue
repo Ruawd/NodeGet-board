@@ -52,6 +52,11 @@ function handleRecordEdit(record: RpcDebugRecord) {
   pendingComposerRecord.value = record;
   activeTab.value = "composer";
 }
+
+function handleComposerSourceOpen(recordId: string) {
+  debugStore.selectedRecordId.value = recordId;
+  activeTab.value = "network";
+}
 </script>
 
 <template>
@@ -103,14 +108,15 @@ function handleRecordEdit(record: RpcDebugRecord) {
         @edit-record="handleRecordEdit"
       />
       <RpcComposerView
-        v-else-if="activeTab === 'composer'"
+        v-show="activeTab === 'composer'"
         :pending-record="pendingComposerRecord"
         @copied="(message) => toast.success(message || '已复制')"
         @consumed-record="pendingComposerRecord = null"
+        @show-source-record="handleComposerSourceOpen"
       />
-      <RpcStreamsView v-else-if="activeTab === 'subscription'" />
-      <RpcAuthView v-else-if="activeTab === 'auth'" @copy="copyText" />
-      <RpcSettingsView v-else />
+      <RpcStreamsView v-if="activeTab === 'subscription'" />
+      <RpcAuthView v-if="activeTab === 'auth'" @copy="copyText" />
+      <RpcSettingsView v-if="activeTab === 'settings'" />
     </div>
   </section>
 </template>
