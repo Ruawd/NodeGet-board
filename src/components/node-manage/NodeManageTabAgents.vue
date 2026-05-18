@@ -47,7 +47,6 @@ import {
 import codeCopy from "@/components/node-manage/codeCopy.vue";
 
 import { useBackendStore } from "@/composables/useBackendStore";
-import { useBackendExtra } from "@/composables/useBackendExtra";
 import { getWsConnection } from "@/composables/useWsConnection";
 import AddAgentDialog from "@/components/agents/AddAgentDialog.vue";
 import { useAgentInfo } from "@/composables/useAgentInfo";
