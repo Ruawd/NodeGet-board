@@ -1,3 +1,7 @@
+import type { Pinia } from "pinia";
+import { watch, type WatchStopHandle } from "vue";
+import { useSystemSettingsStore } from "@/stores/systemSettings";
+
 export type RpcDebugWebSocketEvent =
   | {
       type: "connection";
@@ -39,9 +43,12 @@ const trackedConnections = new Map<
 
 let nativeWebSocket: NativeWebSocketCtor | null = null;
 let installed = false;
+let captureEnabled = false;
 let nextConnectionId = 1;
+let stopCaptureSettingWatch: WatchStopHandle | null = null;
 
 function emit(event: RpcDebugWebSocketEvent) {
+  if (!installed || !captureEnabled) return;
   listeners.forEach((listener) => listener(event));
 }
 
@@ -49,10 +56,30 @@ export function addRpcDebugWebSocketListener(
   listener: RpcDebugWebSocketListener,
 ) {
   listeners.add(listener);
-  replayTrackedConnections(listener);
+  if (captureEnabled) replayTrackedConnections(listener);
   return () => {
     listeners.delete(listener);
   };
+}
+
+function replayTrackedConnectionsToAllListeners() {
+  listeners.forEach((listener) => replayTrackedConnections(listener));
+}
+
+function setRpcDebugCaptureEnabled(enabled: boolean) {
+  if (captureEnabled === enabled) return;
+  captureEnabled = enabled;
+  if (enabled) replayTrackedConnectionsToAllListeners();
+}
+
+function bindRpcDebugCaptureSetting(pinia?: Pinia) {
+  if (!pinia || stopCaptureSettingWatch) return;
+  const systemSettingsStore = useSystemSettingsStore(pinia);
+  setRpcDebugCaptureEnabled(systemSettingsStore.config.rpcDebugPanelEnabled);
+  stopCaptureSettingWatch = watch(
+    () => systemSettingsStore.config.rpcDebugPanelEnabled,
+    setRpcDebugCaptureEnabled,
+  );
 }
 
 function replayTrackedConnections(listener: RpcDebugWebSocketListener) {
@@ -101,7 +128,8 @@ function replayTrackedConnections(listener: RpcDebugWebSocketListener) {
   }
 }
 
-export function installRpcDebugWebSocketPatch() {
+export function installRpcDebugWebSocketPatch(pinia?: Pinia) {
+  bindRpcDebugCaptureSetting(pinia);
   if (installed || typeof window === "undefined") return;
 
   nativeWebSocket = window.WebSocket;
@@ -214,4 +242,8 @@ export function uninstallRpcDebugWebSocketPatch() {
   window.WebSocket = nativeWebSocket;
   nativeWebSocket = null;
   installed = false;
+  captureEnabled = false;
+  stopCaptureSettingWatch?.();
+  stopCaptureSettingWatch = null;
+  trackedConnections.clear();
 }

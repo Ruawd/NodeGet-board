@@ -10,8 +10,6 @@ import "./style/app.css";
 import en from "./locales/en";
 import zh_cn from "./locales/zh_cn";
 
-installRpcDebugWebSocketPatch();
-
 const app = createApp(App);
 const pinia = createPinia();
 const savedLocale = localStorage.getItem("locale");
@@ -34,6 +32,7 @@ const i18n = createI18n({
 });
 
 pinia.use(createPersistedState());
+installRpcDebugWebSocketPatch(pinia);
 
 app.use(pinia);
 app.use(routePrefetchPlugin(router));
