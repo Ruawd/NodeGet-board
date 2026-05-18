@@ -8,11 +8,6 @@ import type {
   TokenDetail,
   TokenLimitEntry,
 } from "../type";
-import {
-  detectTokenPermissionTemplate,
-  getTokenPermissionTemplateOptions,
-} from "../tokenPermissionTemplates";
-import { detectScopeTab } from "../scopeUi";
 import { createPermissionBuckets } from "./permissions/permissionsState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,16 +36,6 @@ const props = withDefaults(
 );
 
 const { t, locale } = useI18n();
-
-const templateLabelMap = computed(() => {
-  locale.value;
-  return new Map(
-    getTokenPermissionTemplateOptions(t).map((item) => [
-      item.value,
-      item.label,
-    ]),
-  );
-});
 
 const displayText = (
   value: string | number | null | undefined,
@@ -183,16 +168,11 @@ const buildPermissionSections = (permissions: PermissionEntry[]) => {
 
 const tokenLimitDetails = computed(() => {
   return (props.token.token_limit ?? []).map((limit, index) => {
-    const scopeTab = detectScopeTab(limit.scopes, "Global");
-    const template = detectTokenPermissionTemplate(limit, scopeTab);
     return {
       index,
       scopes: formatScopeLabels(limit),
       permissions: buildPermissionSections(limit.permissions ?? []),
       permissionsCount: (limit.permissions ?? []).length,
-      templateLabel:
-        templateLabelMap.value.get(template) ??
-        t("dashboard.token.detail.preview.customTemplate"),
     };
   });
 });
@@ -336,11 +316,6 @@ const rawSummary = computed(() => {
                     }}</span>
                   </div>
                   <div class="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary">{{
-                      t("dashboard.token.detail.preview.templateLabel", {
-                        template: limit.templateLabel,
-                      })
-                    }}</Badge>
                     <Badge variant="outline">{{
                       t("dashboard.token.detail.preview.permissionsCount", {
                         count: limit.permissionsCount,

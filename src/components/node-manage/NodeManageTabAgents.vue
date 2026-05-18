@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import {
@@ -11,10 +11,16 @@ import {
   Loader2,
   RefreshCw,
   Plus,
+  GripVertical,
+  Menu,
+  CloudDownload,
+  Info,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "vue-sonner";
 import {
   Table,
@@ -31,104 +37,120 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import codeCopy from "@/components/node-manage/codeCopy.vue";
+
 import { useBackendStore } from "@/composables/useBackendStore";
-import { useBackendExtra } from "@/composables/useBackendExtra";
 import { getWsConnection } from "@/composables/useWsConnection";
 import AddAgentDialog from "@/components/agents/AddAgentDialog.vue";
+import { useAgentInfo } from "@/composables/useAgentInfo";
+import VersionDialog from "@/components/node-manage/VersionDialog.vue";
+
+import { compareVersions } from "compare-versions";
+import { useTask } from "@/composables/useTask";
+import { delay } from "@/lib/delay";
 
 const { t } = useI18n();
 const router = useRouter();
 const { backends, currentBackend } = useBackendStore();
-const { serverInfo } = useBackendExtra();
+const currentAgentInfo = useAgentInfo(undefined, {
+  withIP: true,
+  withVersion: true,
+});
 
-interface AgentInfo {
-  uuid: string;
-  customName: string;
-  serverCount: number;
-}
+const { createSelfUpdateTask } = useTask();
 
-const agents = ref<AgentInfo[]>([]);
-const loading = ref(true);
+const { agents, loading, fetchAgents, fetchAgentVersion } = currentAgentInfo;
+
 const searchQuery = ref("");
 const selectedUuids = ref<Set<string>>(new Set());
 const addAgentOpen = ref(false);
+const sortable = ref(false);
 
-const fetchAgents = async () => {
-  loading.value = true;
+const changeVersionOpen = ref(false);
+const availableVersions = ref<string[]>([]);
+const pendingUpdateUUIDs = ref<string[]>([]);
 
-  if (!currentBackend.value) {
-    agents.value = [];
-    loading.value = false;
-    return;
-  }
-
-  // 只从当前主控获取 agent UUID 列表
-  const conn = getWsConnection(currentBackend.value.url);
-  const result = await conn.call<{ uuids: string[] }>(
-    "nodeget-server_list_all_agent_uuid",
-    { token: currentBackend.value.token },
-  );
-  const uuids = result?.uuids ?? [];
-
-  // 仍然从所有主控获取 metadata_name
-  const nameMap = new Map<string, string>();
-
-  if (uuids.length > 0) {
-    const namespaceKeys = uuids.map((uuid) => ({
-      namespace: uuid,
-      key: "metadata_name",
-    }));
-
-    const nameResults = await Promise.allSettled(
-      backends.value.map(async (backend) => {
-        const conn = getWsConnection(backend.url);
-        try {
-          const result = await conn.call<
-            { namespace: string; key: string; value: unknown }[]
-          >("kv_get_multi_value", {
-            token: backend.token,
-            namespace_key: namespaceKeys,
-          });
-          return Array.isArray(result) ? result : [];
-        } catch {
-          return [];
-        }
-      }),
-    );
-
-    for (const res of nameResults) {
-      if (res.status !== "fulfilled") continue;
-      for (const entry of res.value) {
-        if (
-          entry.key === "metadata_name" &&
-          entry.value &&
-          !nameMap.has(entry.namespace)
-        ) {
-          nameMap.set(entry.namespace, String(entry.value));
-        }
-      }
-    }
-  }
-
-  agents.value = uuids.map((uuid) => ({
-    uuid,
-    customName: nameMap.get(uuid) ?? uuid.slice(0, 8),
-    serverCount: 1,
-  }));
-
-  loading.value = false;
-};
-
-watch(currentBackend, fetchAgents, { immediate: true });
+const installScript = ref(
+  `
+grep -q 'allow_self_update' /etc/nodeget-agent.conf || \\
+sed -i '/^allow_task = true$/a allow_self_update = true' /etc/nodeget-agent.conf
+nohup bash <(curl -sL https://install.nodeget.com | sed  '/^set -e/a sleep 1') update-agent > /dev/null 2>&1 < /dev/null &
+echo "升级成功"
+`.trim(),
+);
 
 const filteredAgents = computed(() => {
+  if (sortable.value) return agents.value;
   const q = searchQuery.value.toLowerCase();
   if (!q) return agents.value;
   return agents.value.filter(
     (a) =>
-      a.customName.toLowerCase().includes(q) ||
+      (a.metadata?.customName &&
+        a.metadata?.customName.toLowerCase().includes(q)) ||
       a.uuid.toLowerCase().includes(q),
   );
+});
+
+const onDragStart = (e: DragEvent, index: number) => {
+  e.dataTransfer?.setData("text/plain", index.toString());
+  e.dataTransfer!.effectAllowed = "move";
+};
+
+const onDragOver = (e: DragEvent) => {
+  e.preventDefault();
+  e.dataTransfer!.dropEffect = "move";
+};
+
+const onDrop = (e: DragEvent, target: number) => {
+  e.preventDefault();
+  const fromStr = e.dataTransfer?.getData("text/plain");
+  if (fromStr == null) return;
+  const from = parseInt(fromStr, 10);
+  if (isNaN(from) || from === target) return;
+  const moved = agents.value.splice(from, 1)[0];
+  if (moved) agents.value.splice(target, 0, moved);
+};
+
+const persistOrders = async () => {
+  if (!currentBackend.value) return;
+  const changed: { uuid: string; order: number }[] = [];
+  agents.value.forEach((agent, i) => {
+    const newOrder = i + 1;
+    if (newOrder !== agent.metadata?.order) {
+      if (agent.metadata) agent.metadata.order = newOrder;
+      changed.push({ uuid: agent.uuid, order: newOrder });
+    }
+  });
+  if (changed.length === 0) return;
+  const conn = getWsConnection(currentBackend.value.url);
+  try {
+    await conn.callBatch(
+      changed.map(({ uuid, order }) => ({
+        method: "kv_set_value",
+        params: {
+          token: currentBackend.value!.token,
+          namespace: uuid,
+          key: "metadata_order",
+          value: order,
+        },
+      })),
+    );
+    await fetchAgents();
+    toast.success(t("dashboard.agents.sortSaved"));
+  } catch (e: any) {
+    toast.error(e?.message ?? "保存排序失败");
+  }
+};
+
+watch(sortable, (v) => {
+  if (!v) void persistOrders();
 });
 
 const allSelected = computed(() => {
@@ -159,6 +181,10 @@ const toggleSelect = (uuid: string, checked: boolean) => {
 const hasSelection = computed(() => selectedUuids.value.size > 0);
 
 const handleBatchAction = (_action: string) => {
+  if (_action === "upgrade") {
+    openChooseVersion(Array.from(selectedUuids.value));
+    return;
+  }
   toast.info(t("dashboard.agents.devInProgress"));
 };
 
@@ -167,6 +193,126 @@ const handleSettings = (uuid: string) => {
 };
 
 defineExpose({ fetchAgents });
+
+function openChooseVersion(uuids: string[]) {
+  pendingUpdateUUIDs.value = uuids;
+  changeVersionOpen.value = true;
+}
+
+const latestVersion = computed(() => {
+  if (availableVersions.value.length === 0) {
+    return "";
+  }
+  const sorted = availableVersions.value
+    .map((v) => v.replace(/^v/g, ""))
+    .sort(compareVersions);
+
+  return sorted[sorted.length - 1] as string;
+});
+
+function extractVersion(version: string) {
+  return version.split("-")[0] || "";
+}
+
+const upgradeStatus = ref<Map<string, "waiting" | "upgrading" | "confirming">>(
+  new Map(),
+);
+async function confirmVersion(version: string) {
+  version = version.replace(/^v/g, "");
+
+  changeVersionOpen.value = false;
+
+  if (typeof version !== "string") {
+    return;
+  }
+  const uuids = pendingUpdateUUIDs.value.filter((uuid) => {
+    let oldVersion = agents.value.find((v) => v.uuid === uuid)?.version;
+    if (!oldVersion) {
+      return false;
+    }
+    oldVersion = extractVersion(oldVersion);
+    if (compareVersions(oldVersion, "0.1.3") < 0) {
+      return false;
+    }
+    return compareVersions(version, oldVersion) !== 0;
+  });
+
+  if (uuids.length === 0) {
+    toast.error("未发现可升级的在线节点");
+    return;
+  }
+
+  upgradeStatus.value = new Map();
+
+  for (let i = 0, len = uuids.length; i < len; i++) {
+    const uuid = uuids[i] as string;
+    upgradeStatus.value.set(uuid, "waiting");
+  }
+
+  for (let i = 0, len = uuids.length; i < len; i++) {
+    const uuid = uuids[i] as string;
+    upgradeStatus.value.set(uuid, "upgrading");
+    await createSelfUpdateTask(uuid, "v" + version, false);
+    await delay(800);
+    console.debug("confirming");
+    upgradeStatus.value.set(uuid, "confirming");
+
+    const waitInterval = 1000,
+      maxWait = 12000;
+    let finished = false;
+    const agent = agents.value.find((v) => v.uuid === uuid);
+    if (!agent) {
+      continue;
+    }
+    for (let j = 0; j < maxWait; j += waitInterval) {
+      try {
+        await fetchAgentVersion(agent, waitInterval);
+        // console.debug({
+        //   currentVersion: extractVersion(agent.version || ""),
+        //   targetVersion: version,
+        // });
+        if (extractVersion(agent.version || "") === version) {
+          upgradeStatus.value.delete(uuid);
+          finished = true;
+          break;
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        await delay(waitInterval);
+      }
+    }
+    upgradeStatus.value.delete(uuid);
+    if (!finished) {
+      toast.success(
+        `agent ${agent.metadata?.customName || agent.uuid} 升级失败, 请尝试手动升级`,
+      );
+    }
+  }
+
+  toast.success("agent升级完成");
+}
+
+function fetchVersion() {
+  const repo = import.meta.env.VITE_RELEASE_REPO;
+  return fetch(`https://api.github.com/repos/${repo}/releases`)
+    .then((r) => r.json())
+    .then((r) => (r as { tag_name: string }[]).map((v) => v.tag_name))
+    .then((r) => {
+      availableVersions.value = r;
+    })
+    .catch((e) => {
+      console.error(e);
+      toast.error(`获取GitHub releases失败，检查 api.github.com 是否可访问`);
+    });
+}
+
+function refresh() {
+  fetchAgents();
+  fetchVersion();
+}
+
+refresh();
 </script>
 
 <template>
@@ -182,13 +328,14 @@ defineExpose({ fetchAgents });
           class="pl-8"
         />
       </div>
-      <div v-if="hasSelection" class="flex items-center gap-2">
+      <div class="flex items-center gap-2">
         <Button
           size="sm"
           variant="outline"
+          :disabled="loading || !hasSelection"
           @click="handleBatchAction('upgrade')"
         >
-          <ArrowUpFromLine class="h-4 w-4 mr-1.5" />
+          <CloudDownload class="h-4 w-4 mr-1.5" />
           {{ t("dashboard.agents.batchUpgrade") }}
         </Button>
         <!-- temp disabled -->
@@ -228,6 +375,19 @@ defineExpose({ fetchAgents });
       >
         <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" />
       </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        :disabled="loading || agents.length < 2"
+        @click="sortable = !sortable"
+      >
+        <Menu class="h-4 w-4 mr-1.5" />
+        {{
+          sortable
+            ? t("dashboard.agents.sortSave")
+            : t("dashboard.agents.sortEdit")
+        }}
+      </Button>
       <Button @click="addAgentOpen = true">
         <Plus class="h-4 w-4 mr-1.5" />
         {{ t("dashboard.agents.addAgent") }}
@@ -261,6 +421,7 @@ defineExpose({ fetchAgents });
             </TableHead>
             <TableHead>{{ t("dashboard.agents.colId") }}</TableHead>
             <TableHead>{{ t("dashboard.agents.colName") }}</TableHead>
+            <TableHead>{{ t("dashboard.agents.colIp") }}</TableHead>
             <TableHead>{{ t("dashboard.agents.colVersion") }}</TableHead>
             <TableHead class="text-right">{{
               t("dashboard.agents.colActions")
@@ -268,12 +429,25 @@ defineExpose({ fetchAgents });
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableEmpty v-if="filteredAgents.length === 0" :colspan="5">
+          <TableEmpty v-if="filteredAgents.length === 0" :colspan="6">
             {{ t("dashboard.agents.noAgents") }}
           </TableEmpty>
-          <TableRow v-for="agent in filteredAgents" :key="agent.uuid">
+          <TableRow
+            v-for="(agent, index) in filteredAgents"
+            :key="agent.uuid"
+            :draggable="sortable"
+            :class="sortable ? 'cursor-move select-none' : ''"
+            @dragstart="(e: DragEvent) => onDragStart(e, index)"
+            @dragover="onDragOver"
+            @drop="(e: DragEvent) => onDrop(e, index)"
+          >
             <TableCell>
+              <GripVertical
+                v-if="sortable"
+                class="h-4 w-4 text-muted-foreground"
+              />
               <Checkbox
+                v-else
                 :modelValue="selectedUuids.has(agent.uuid)"
                 @update:modelValue="
                   (v: any) => {
@@ -285,13 +459,104 @@ defineExpose({ fetchAgents });
             <TableCell class="font-mono text-xs text-muted-foreground">
               {{ agent.uuid.slice(0, 8) }}
             </TableCell>
-            <TableCell class="font-medium">{{ agent.customName }}</TableCell>
-            <TableCell class="text-muted-foreground">--</TableCell>
+            <TableCell class="font-medium">{{
+              agent?.metadata?.customName || "--"
+            }}</TableCell>
+            <TableCell class="min-w-20">
+              <Loader2
+                v-if="agent.ip === undefined"
+                class="h-3.5 w-3.5 animate-spin text-muted-foreground"
+              />
+              <span v-else-if="agent.ip" class="font-mono text-xs">{{
+                agent.ip
+              }}</span>
+              <span v-else class="text-muted-foreground">--</span>
+            </TableCell>
+            <TableCell
+              class="text-muted-foreground"
+              v-if="!upgradeStatus.has(agent.uuid)"
+            >
+              <span :title="agent.version || ''">
+                {{ agent.version?.slice(0, 20) || "--" }}
+              </span>
+              <template v-if="agent.version">
+                <TooltipProvider
+                  v-if="
+                    compareVersions(extractVersion(agent.version), '0.1.3') < 0
+                  "
+                >
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Badge
+                        variant="outline"
+                        class="bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 ml-2"
+                      >
+                        脚本更新
+                        <Info data-icon="inline-start" />
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <div class="w-150">
+                        <article class="prose prose-sm mb-2">
+                          <h4 class="mb-1">
+                            版本太老，不支持 API
+                            更新，只能通过脚本来更新到新版本
+                          </h4>
+                          <p>
+                            你可以下面的命令，到
+                            <a href="#/dashboard/batch-exec"> 批量执行</a>
+                            面板上批量更新使用 Linux 系统的 Agent 节点
+                          </p>
+                        </article>
+                        <codeCopy :code="installScript"></codeCopy>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <template v-else-if="availableVersions.length">
+                  <Badge
+                    variant="outline"
+                    v-if="
+                      compareVersions(
+                        extractVersion(agent.version),
+                        latestVersion,
+                      ) < 0
+                    "
+                    class="bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 ml-2"
+                    >可更新</Badge
+                  >
+                  <Badge
+                    variant="outline"
+                    v-else
+                    class="bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300 ml-2"
+                    >最新版本</Badge
+                  >
+                </template>
+              </template>
+            </TableCell>
+            <TableCell v-else>
+              Agent升级
+              <Badge variant="outline" class="ml-1">
+                <Spinner data-icon="inline-start" />
+                {{ upgradeStatus.get(agent.uuid) }}
+              </Badge>
+            </TableCell>
             <TableCell class="text-right">
               <Button
                 size="icon"
                 variant="ghost"
                 class="h-8 w-8"
+                title="升级"
+                @click="openChooseVersion([agent.uuid])"
+              >
+                <CloudDownload class="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                class="h-8 w-8"
+                title="设置"
                 @click="handleSettings(agent.uuid)"
               >
                 <Settings class="h-4 w-4" />
@@ -304,7 +569,13 @@ defineExpose({ fetchAgents });
     <AddAgentDialog
       v-if="addAgentOpen"
       v-model:open="addAgentOpen"
-      @added="fetchAgents()"
+      @added="refresh()"
     />
+    <VersionDialog
+      v-if="changeVersionOpen"
+      :availableVersions="availableVersions"
+      v-model:open="changeVersionOpen"
+      @select-version="confirmVersion"
+    ></VersionDialog>
   </div>
 </template>

@@ -19,6 +19,27 @@ export type errorResponse = {
 
 export { mapTokenDetailToForm };
 
+const getTokenErrorMessage = (error: unknown) => {
+  if (error && typeof error === "object") {
+    const source = error as {
+      message?: unknown;
+      error?: {
+        message?: unknown;
+      };
+    };
+
+    if (typeof source.error?.message === "string" && source.error.message) {
+      return source.error.message;
+    }
+
+    if (typeof source.message === "string" && source.message) {
+      return source.message;
+    }
+  }
+
+  return "";
+};
+
 export const useEditTokenHook = () => {
   const { currentBackend } = useBackendStore();
   const backendUrl = computed(() => currentBackend.value?.url ?? "");
@@ -39,6 +60,9 @@ export const useEditTokenHook = () => {
         success?: string;
         token_key?: string;
         message?: string;
+        error?: {
+          message?: string;
+        };
       }>("token_edit", {
         token,
         target_token,
@@ -47,16 +71,26 @@ export const useEditTokenHook = () => {
         ...buildOptionalFieldPayload(tokenData),
       });
 
-      if (result?.success || result?.message || result?.token_key) {
+      if (result?.success || result?.token_key) {
         toast.success(t("dashboard.token.api.updateSuccess"));
         return true;
       }
 
-      toast.error(t("dashboard.token.api.updateFailed"));
+      const message = result?.error?.message || result?.message || "";
+      toast.error(
+        message
+          ? t("dashboard.token.api.updateFailedWithMessage", { message })
+          : t("dashboard.token.api.updateFailed"),
+      );
       return false;
     } catch (error) {
       console.error(error);
-      toast.error(t("dashboard.token.api.updateFailed"));
+      const message = getTokenErrorMessage(error);
+      toast.error(
+        message
+          ? t("dashboard.token.api.updateFailedWithMessage", { message })
+          : t("dashboard.token.api.updateFailed"),
+      );
       return false;
     }
   };

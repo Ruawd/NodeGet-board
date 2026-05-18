@@ -1,18 +1,33 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { type token } from "../type";
 import { KeyRound } from "lucide-vue-next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCreatTokenHook } from "@/composables/token/useCreateToken";
-import { createDefaultToken } from "../scopeCodec";
 import TokenEditorWorkspace from "../components/TokenEditorWorkspace.vue";
 import TokenSuccessDialog from "../components/TokenSuccessDialog.vue";
 import { useI18n } from "vue-i18n";
 
+const props = withDefaults(
+  defineProps<{
+    token: token;
+    showBackButton?: boolean;
+    backLabel?: string;
+  }>(),
+  {
+    showBackButton: false,
+    backLabel: "",
+  },
+);
+
+const emits = defineEmits<{
+  (e: "update:token", value: token): void;
+  (e: "back"): void;
+}>();
+
 const createToken = useCreatTokenHook();
 const { t } = useI18n();
 
-const tokenFromData = ref<token>(createDefaultToken());
 const createLoading = ref(false);
 const successDialogOpen = ref(false);
 const createdTokenInfo = ref({
@@ -20,8 +35,13 @@ const createdTokenInfo = ref({
   secret: "",
 });
 
+const tokenFromData = computed({
+  get: () => props.token,
+  set: (value: token) => emits("update:token", value),
+});
+
 const handleTokenChange = (value: token) => {
-  tokenFromData.value = value;
+  emits("update:token", value);
 };
 
 // 创建token
@@ -61,7 +81,10 @@ const handleCreateToken = () => {
         :submitting-label="
           t('dashboard.token.create.createTokenCard.creatingButton')
         "
+        :show-back-button="props.showBackButton"
+        :back-label="props.backLabel"
         @update:token="handleTokenChange"
+        @back="emits('back')"
         @submit="handleCreateToken"
       />
     </CardContent>

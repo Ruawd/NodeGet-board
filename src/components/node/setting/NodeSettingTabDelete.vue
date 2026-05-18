@@ -18,8 +18,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useKv } from "@/composables/useKv";
 import { useBackendStore } from "@/composables/useBackendStore";
+import { useBackendExtra } from "@/composables/useBackendExtra";
 import { makeRpcFunction } from "@/composables/useWsConnection";
 import { useLifecycle } from "@/composables/useLifecycle";
+import { useTask } from "@/composables/useTask";
 import { useI18n } from "vue-i18n";
 import {
   useAgentConfig,
@@ -27,6 +29,7 @@ import {
   type UpstreamServer,
   type splitConfig,
 } from "@/composables/useAgentConfig";
+import { compareVersions } from "compare-versions";
 
 const props = defineProps<{ uuid: string }>();
 
@@ -34,8 +37,10 @@ const { t } = useI18n();
 const router = useRouter();
 const kv = useKv();
 const { currentBackend } = useBackendStore();
+const { currentBackendInfo } = useBackendExtra();
 const { getAgentConfigExtra, writeAgentConfig } = useAgentConfig();
 const { afterAgentDelete } = useLifecycle();
+const { createExecuteTask } = useTask();
 
 const nodeName = ref("");
 
@@ -81,8 +86,23 @@ function setStep(i: number, status: "running" | "done") {
   progress.value = Math.round(((i + (status === "done" ? 1 : 0)) / 4) * 100);
 }
 
+function extractVersion(version: string) {
+  return version.split("-")[0] || "";
+}
+
 async function handleDelete() {
   const rpc = makeRpcFunction();
+
+  // 先看版本号，如果server版本号太低，拒绝删除。
+  if (!currentBackendInfo.value?.version) {
+    toast.error("未成功获得版本号，请检查主控是否在线");
+    return;
+  }
+  const version = extractVersion(currentBackendInfo.value?.version);
+  if (compareVersions(version, "0.3.3") < 0) {
+    toast.error("主控版本号太低，请先将版本号升级到0.3.3以上");
+    return;
+  }
 
   if (confirmName.value !== nodeName.value) {
     toast.error(t("dashboard.node.delete.nameMismatch"));
@@ -93,16 +113,31 @@ async function handleDelete() {
   setStep(0, "running");
   try {
     const { currentUpstream } = await getAgentConfigExtra(props.uuid);
+
+    try {
+      const blockExec = false;
+      await createExecuteTask(
+        props.uuid,
+        "bash",
+        ["-c", "bash <(curl -sL https://install.nodeget.com) uninstall-agent"],
+        blockExec,
+      );
+    } catch {}
+
     // disable token, stop data report
     await rpc("token_delete", {
       token: currentBackend.value?.token,
       target_token: currentUpstream.token.split(":")[0],
     });
+  } catch {}
 
-    // todo: delete server block
-  } catch {
-    // API may not be implemented yet, continue
-  }
+  try {
+    // disable token, stop data report
+    await rpc("token_delete", {
+      token: currentBackend.value?.token,
+      target_token: `[agent]:${props.uuid}`,
+    });
+  } catch {}
   setStep(0, "done");
 
   // Step 2: clean cron
@@ -114,19 +149,25 @@ async function handleDelete() {
   }
   setStep(1, "done");
 
-  // Step 3: clean KV namespace
+  // Step 3: clean monitor/report data
   setStep(2, "running");
   try {
-    await afterAgentDelete(props.uuid, "kv");
+    await rpc("agent-uuid_delete", {
+      token: currentBackend.value?.token,
+      agent_uuid: props.uuid,
+    });
+
+    // will be cleared in js worker.
+    // await afterAgentDelete(props.uuid, "data");
   } catch {
     // ignore
   }
   setStep(2, "done");
 
-  // Step 4: clean monitor/report data
+  // Step 4: clean KV namespace
   setStep(3, "running");
   try {
-    await afterAgentDelete(props.uuid, "data");
+    await afterAgentDelete(props.uuid, "kv");
     await new Promise((r) => setTimeout(r, 300));
   } catch (error) {}
   setStep(3, "done");

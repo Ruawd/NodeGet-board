@@ -7,6 +7,9 @@ import { useKv } from "@/composables/useKv";
 import { type BackendCron } from "@/composables/useCron";
 import { useBackendStore } from "@/composables/useBackendStore";
 import { makeRpcFunction } from "@/composables/useWsConnection";
+import { getAgentInfoFromPool } from "@/composables/useAgentInfo";
+import { delay } from "@/lib/delay";
+import { useNodeMetadata, makeDefaultMetadata } from "./useNodeMetadata";
 
 export interface agentPostprocessOptions {
   cronList: BackendCron[];
@@ -27,12 +30,39 @@ export interface agentPostprocessOptions {
   };
 }
 
-async function afterServerCreate(backend: Backend) {
-  const { getWorker, addWorker, runWorker } = useJsRuntime(ref(backend));
-  const cron = useCron(ref(backend));
+async function ensureServerInited(backend: Backend) {
+  const maxTime = 5000; //ms
+  const interval = 500;
 
-  const baseWorkerName = "base-worker";
+  const namespace = "global";
+  const kvClient = useKv(ref(backend));
+  let globalCreated = false;
+
+  for (let t = 0; t < maxTime; t += interval) {
+    if (!globalCreated) {
+      await kvClient.fetchNamespaces();
+      globalCreated = kvClient.namespaces.value.includes(namespace);
+      if (!globalCreated) {
+        await delay(interval);
+        continue;
+      }
+    }
+
+    kvClient.namespace.value = namespace;
+    const inited = await kvClient.getValue("inited");
+    console.debug({ inited });
+    if (inited === true) {
+      return;
+    }
+  }
+  throw "server init timeout";
+}
+
+async function afterServerCreate(backend: Backend, force: boolean = false) {
+  const { getWorker, addWorker, runWorker } = useJsRuntime(ref(backend));
+
   try {
+    const baseWorkerName = "base-worker";
     const worker = await getWorker(baseWorkerName).catch(
       (v: Error | string) => {
         if (v.toString().indexOf("js_worker not found") !== -1) {
@@ -54,61 +84,33 @@ async function afterServerCreate(backend: Backend) {
         },
       });
     }
-    const cronResults = await cron.list();
-    const exist = cronResults.find(
-      (v) => v.name === baseWorkerName + "-update",
-    );
-    if (!exist) {
-      await cron.create({
-        name: baseWorkerName + "-update",
-        cron_expression: "*/3 * * * * *",
-        cron_type: {
-          server: {
-            js_worker: [
-              baseWorkerName,
-              {
-                task: "update",
-              },
-            ],
-          },
-        },
-      });
-    }
+    await delay(100);
     await runWorker(baseWorkerName, "call", {
-      lifecycle: "server-create",
+      lifecycle: force ? "server-reset" : "server-create",
     });
-
-    // Initialize global KV namespace
-    const kvClient = useKv();
-    await kvClient.fetchNamespaces();
-    const existedNS = kvClient.namespaces.value.includes("global");
-    if (!existedNS) {
-      await kvClient.createNamespace("global");
-    }
+    await ensureServerInited(backend);
+    toast.success("Server initialization successful.");
   } catch (e: unknown) {
+    console.error(e);
     toast.error(e instanceof Error ? e.message : "执行server安装后处理失败");
   }
 }
 
-const createdAgent = new Set();
 async function afterAgentCreate(
   agentUUID: string,
   option: agentPostprocessOptions,
+  backend = useBackendStore().currentBackend,
 ) {
-  if (createdAgent.has(agentUUID)) {
-    return;
-  }
-  const { runWorker } = useJsRuntime();
+  // const agentKey = backend.value?.url + "-" + agentUUID;
+  const { runWorker } = useJsRuntime(backend);
 
   try {
-    const { currentBackend } = useBackendStore();
-    const backend = currentBackend.value;
     if (!backend) {
       throw new Error("No backend configured");
     }
 
     // Initialize KV namespace for the agent
-    const kvClient = useKv();
+    const kvClient = useKv(backend);
     await kvClient.fetchNamespaces();
     const existedNS = kvClient.namespaces.value.includes(agentUUID);
     if (!existedNS) {
@@ -117,6 +119,7 @@ async function afterAgentCreate(
 
     // Set KV values for databaseLimit and metadata
     kvClient.namespace.value = agentUUID;
+    const metadata = useNodeMetadata(kvClient);
 
     // Store databaseLimit fields
     for (const [key, value] of Object.entries(option.databaseLimit)) {
@@ -126,14 +129,19 @@ async function afterAgentCreate(
     }
 
     // Store metadata fields
-    for (const [key, value] of Object.entries(option.metadata)) {
-      if (value !== undefined && value !== null) {
-        await kvClient.setValue(key, value);
-      }
-    }
+    metadata.initDefaultMetadata(agentUUID, {
+      ...makeDefaultMetadata(agentUUID),
+      ...option.metadata,
+    });
+    // for (const [key, value] of Object.entries({
+    // })) {
+    //   if (value !== undefined && value !== null) {
+    //     await kvClient.setValue(key, value);
+    //   }
+    // }
 
     // Update cron tasks to include this agent
-    const cronClient = useCron(ref(backend));
+    const cronClient = useCron(backend);
     for (const cronTask of option.cronList) {
       if ("agent" in cronTask.cron_type) {
         const [agentIds, taskPayload] = cronTask.cron_type.agent;
@@ -148,7 +156,6 @@ async function afterAgentCreate(
         });
       }
     }
-    createdAgent.add(agentUUID);
 
     await runWorker("ip-location-update", "call", {
       uuids: [agentUUID],
@@ -195,6 +202,22 @@ async function afterAgentDelete(agentUUID: string, stage: string) {
           }
         }
         break;
+      case "data":
+        // clean up monitor data and task data
+        {
+          const params = {
+            token: currentBackend.value?.token,
+            conditions: [{ uuid: agentUUID }],
+          };
+
+          const timeout = 10 * 1000;
+          await rpc("task_delete", params, timeout);
+          await rpc("agent_delete_dynamic_summary", params, timeout);
+          await rpc("agent_delete_dynamic", params, timeout);
+          await rpc("agent_delete_static", params, timeout);
+        }
+        break;
+
       case "kv":
         // clean up monitor data and task data
         {
@@ -204,22 +227,10 @@ async function afterAgentDelete(agentUUID: string, stage: string) {
           if (existedNS) {
             await kvClient.deleteNamespace(agentUUID);
           }
+          await getAgentInfoFromPool(currentBackend).fetchAgents();
         }
         break;
-      case "data":
-        // clean up monitor data and task data
-        {
-          const params = {
-            token: currentBackend.value?.token,
-            conditions: [{ uuid: agentUUID }],
-          };
 
-          await rpc("task_delete", params);
-          await rpc("agent_delete_dynamic_summary", params);
-          await rpc("agent_delete_dynamic", params);
-          await rpc("agent_delete_static", params);
-        }
-        break;
       default:
         break;
     }
@@ -230,6 +241,15 @@ async function afterAgentDelete(agentUUID: string, stage: string) {
     console.error("agent delete error:", e);
   }
 }
+
+// async function syncAgent(
+//   agentUUID: string,
+//   serverFrom: any,
+//   serverTo: any,
+//   backend = useBackendStore().currentBackend
+// ) {
+
+// }
 
 export function useLifecycle() {
   return {

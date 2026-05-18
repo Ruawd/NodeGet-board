@@ -54,6 +54,11 @@ async function getAgentConfigWsUrl(backend: Ref<Backend>) {
   }
   const kv = useKv(backend);
   await kv.fetchNamespaces();
+  const existedNS = kv.namespaces.value.includes("global");
+  if (!existedNS) {
+    await kv.createNamespace("global");
+  }
+
   kv.namespace.value = "global";
   const result = await kv.getValue("agent_config_ws_url");
   if (typeof result === "string") {
@@ -71,7 +76,15 @@ async function saveAgentConfigWsUrl(backend: Ref<Backend>, url: string) {
 }
 
 async function getServerIpInfo(backend: Ref<Backend>) {
-  const { runWorker, poolingWorkerLogs } = useJsRuntime(backend);
+  const { runWorker, poolingWorkerLogs, listAllWorkers } =
+    useJsRuntime(backend);
+  for (let t = 0; t < 3000; t += 200) {
+    const r = await listAllWorkers();
+    if (r.find((v) => v === "server-task-worker")) {
+      break;
+    }
+  }
+
   const id = await runWorker("server-task-worker", "call", {
     task: {
       name: "ip",
@@ -83,7 +96,7 @@ async function getServerIpInfo(backend: Ref<Backend>) {
   return poolingWorkerLogs(id).then((r) => r.result as IpInfo);
 }
 
-function getSingleBackendProperty(
+export function getSingleBackendProperty(
   property: string,
   backend: Backend,
   promise: Promise<string | null>,
@@ -96,7 +109,6 @@ function getSingleBackendProperty(
         ...serverInfo.value[backend.url],
         [property]: value,
       };
-      console.debug(serverInfo.value);
     })
     .catch((e) => {
       console.error(e);
@@ -186,6 +198,11 @@ const currentBackendInfo = computed(() => {
   return serverInfo.value[currentBackend.value.url] as ServerInfo;
 });
 
+async function updateServer(backend: Backend, version: string) {
+  const conn = getWsConnection(backend.url);
+  conn.call("nodeget-server_self_update", [backend.token, version]);
+}
+
 export function useBackendExtra() {
   return {
     refreshAll,
@@ -193,6 +210,8 @@ export function useBackendExtra() {
     serverInfo,
     serverInfoLoading,
     currentBackendInfo,
+    fetchServerInfo,
     saveAgentConfigWsUrl,
+    updateServer,
   };
 }

@@ -1,6 +1,6 @@
-# nodeget-board
+# NodeGet-Board
 
-The frontend of NodeGet. Built with vue+ts.
+The dashboard of NodeGet. Built with vue+ts.
 
 # Run and test
 

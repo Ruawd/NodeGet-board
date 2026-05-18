@@ -6,12 +6,16 @@ import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
 import vueDevTools from "vite-plugin-vue-devtools";
 import tailwindcss from "@tailwindcss/vite";
+import { versionPlugin } from "./versionPlugin";
 
 // https://vite.dev/config/
 export default defineConfig({
   server: {
     port: 5173,
     host: "0.0.0.0",
+  },
+  build: {
+    manifest: true,
   },
   plugins: [
     unpluginVueRouter({
@@ -27,6 +31,7 @@ export default defineConfig({
     vueJsx(),
     vueDevTools(),
     tailwindcss(),
+    versionPlugin,
   ],
   resolve: {
     alias: {

@@ -23,6 +23,16 @@ export const createDefaultToken = (): Token => ({
   password: "",
 });
 
+export const cloneTokenLimitEntries = (
+  tokenLimit: TokenLimitEntry[],
+): TokenLimitEntry[] =>
+  (tokenLimit ?? []).map((item) => ({
+    scopes: (item.scopes ?? []).map((scope) => ({ ...scope })),
+    permissions: (item.permissions ?? []).map((permission) =>
+      JSON.parse(JSON.stringify(permission)),
+    ),
+  }));
+
 const normalizeStringList = (value: unknown) => {
   if (typeof value === "string") {
     const normalized = value.trim();
@@ -121,7 +131,9 @@ export const normalizeTokenLimit = (tokenLimit: unknown): TokenLimitEntry[] => {
     })
     .filter((item): item is TokenLimitEntry => item !== null);
 
-  return normalized.length > 0 ? normalized : createDefaultToken().token_limit;
+  return normalized.length > 0
+    ? cloneTokenLimitEntries(normalized)
+    : createDefaultToken().token_limit;
 };
 
 export const serializeScopeItem = (item: TokenLimitScopeItem) => {
@@ -133,7 +145,7 @@ export const serializeScopeItem = (item: TokenLimitScopeItem) => {
 };
 
 export const buildLimitPayload = (token: Token) => {
-  return (token.token_limit ?? []).map((item) => ({
+  return cloneTokenLimitEntries(token.token_limit ?? []).map((item) => ({
     scopes: (item.scopes ?? []).map(serializeScopeItem),
     permissions: normalizePermissions(item.permissions),
   }));
@@ -199,6 +211,8 @@ export const mapTokenDetailToForm = (detail: TokenDetail | null): Token => {
     password: detail.password ?? "",
     timestamp_from: detail.timestamp_from ?? 0,
     timestamp_to: detail.timestamp_to ?? 0,
-    token_limit: normalizeTokenLimit(detail.token_limit),
+    token_limit: cloneTokenLimitEntries(
+      normalizeTokenLimit(detail.token_limit),
+    ),
   };
 };

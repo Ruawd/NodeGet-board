@@ -3,6 +3,7 @@ export type TaskEventType =
   | "tcp_ping"
   | "http_ping"
   | "http_request"
+  | "self_update"
   | "web_shell"
   | "execute"
   | "read_config"

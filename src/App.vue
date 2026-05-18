@@ -8,6 +8,7 @@ import { useBackendStore } from "@/composables/useBackendStore";
 import { usePermissionStore } from "@/stores/permission";
 import { getWsConnection } from "@/composables/useWsConnection";
 import { useRouter, useRoute } from "vue-router";
+import "@/utils/detectUpdate";
 
 const router = useRouter();
 const route = useRoute();
@@ -35,10 +36,12 @@ onMounted(() => {
   }
 });
 
-function ensureBackend() {
+async function ensureBackend() {
   // Check if we need to force open backend switcher
+  await router.isReady();
+
   if (backends.value.length === 0) {
-    if (route.name !== "/dashboard/node-manage")
+    if (route.name !== "/dashboard/node-manage" || !route.query.fill)
       router.push({
         name: "/dashboard/node-manage",
         query: {
@@ -46,6 +49,11 @@ function ensureBackend() {
           tab: "servers",
         },
       });
+  } else if (!route.fullPath.startsWith("/dashboard/")) {
+    // force pathname starts with /dashboard/
+    router.replace({
+      name: "/dashboard/overview",
+    });
   }
 }
 
@@ -54,21 +62,24 @@ watch(
   () => {
     ensureBackend();
   },
+  {
+    immediate: true,
+  },
 );
 
 watch(
   currentBackend,
   async (backend) => {
     await permissionStore.refreshByBackend(backend);
-    const tokenKey = permissionStore.tokenInfo?.token_key;
-    if (backend?.url && backend?.token && tokenKey) {
-      getWsConnection(backend.url)
-        .call("kv_create", {
-          token: backend.token,
-          namespace: tokenKey,
-        })
-        .catch(() => {});
-    }
+    // const tokenKey = permissionStore.tokenInfo?.token_key;
+    // if (backend?.url && backend?.token && tokenKey) {
+    //   getWsConnection(backend.url)
+    //     .call("kv_create", {
+    //       token: backend.token,
+    //       namespace: tokenKey,
+    //     })
+    //     .catch(() => {});
+    // }
   },
   { deep: true, immediate: true },
 );

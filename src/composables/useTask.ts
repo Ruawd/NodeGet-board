@@ -26,6 +26,10 @@ export interface HttpRequestTask {
   };
 }
 
+export interface SelfUpdateTask {
+  self_update: string;
+}
+
 export interface WebShellTask {
   web_shell: {
     url: string;
@@ -48,16 +52,20 @@ export interface EditConfigTask {
 
 type IpTask = "ip";
 
+type VersionTask = "version";
+
 export type TaskEventType =
   | PingTask
   | TcpPingTask
   | HttpPingTask
   | HttpRequestTask
+  | SelfUpdateTask
   | WebShellTask
   | ExecuteTask
   | ReadConfigTask
   | EditConfigTask
-  | IpTask;
+  | IpTask
+  | VersionTask;
 
 // Task Event Results
 export interface PingResult {
@@ -81,6 +89,10 @@ export interface HttpRequestResult {
   };
 }
 
+export interface SelfUpdateResult {
+  self_update: boolean;
+}
+
 export interface WebShellResult {
   web_shell: boolean; // Is Connected
 }
@@ -101,15 +113,34 @@ export interface IpResult {
   ip: [string | null, string | null]; // [IPv4, IPv6]
 }
 
+export interface VersionResult {
+  version: {
+    binary_type: string;
+    cargo_version: string;
+    git_branch: string;
+    git_commit_sha: string;
+    git_commit_date: string; // ISO 8601
+    git_commit_message: string;
+    build_time: string; // 看起来是时间戳（字符串形式）
+    cargo_target_triple: string;
+    rustc_channel: "stable" | "beta" | "nightly" | string;
+    rustc_version: string;
+    rustc_commit_date: string; // YYYY-MM-DD
+    rustc_commit_hash: string;
+    rustc_llvm_version: string;
+  };
+}
+
 export type TaskEventResult =
   | PingResult
   | TcpPingResult
   | HttpPingResult
   | HttpRequestResult
+  | SelfUpdateResult
   | WebShellResult
   | ExecuteResult
   | ReadConfigResult
-  | EditConfigResult
+  | VersionResult
   | IpResult;
 
 // Query Conditions
@@ -340,6 +371,18 @@ export function useTask(backend = useBackendStore().currentBackend) {
       : createTask(targetUuid, taskType);
   };
 
+  const createSelfUpdateTask = async (
+    targetUuid: string,
+    version: string,
+    blocking: boolean = false,
+    timeoutMs?: number,
+  ): Promise<CreateTaskResponse | CreateTaskBlockingResponse> => {
+    const taskType: SelfUpdateTask = { self_update: version };
+    return blocking
+      ? createTaskBlocking(targetUuid, taskType, timeoutMs)
+      : createTask(targetUuid, taskType);
+  };
+
   const createExecuteTask = async (
     targetUuid: string,
     cmd: string,
@@ -398,6 +441,17 @@ export function useTask(backend = useBackendStore().currentBackend) {
       : createTask(targetUuid, taskType);
   };
 
+  const createVersionTask = async (
+    targetUuid: string,
+    blocking: boolean = false,
+    timeoutMs?: number,
+  ): Promise<CreateTaskResponse | CreateTaskBlockingResponse> => {
+    const taskType: VersionTask = "version";
+    return blocking
+      ? createTaskBlocking(targetUuid, taskType, timeoutMs)
+      : createTask(targetUuid, taskType);
+  };
+
   return {
     createTask,
     createTaskBlocking,
@@ -414,10 +468,12 @@ export function useTask(backend = useBackendStore().currentBackend) {
     createTcpPingTask,
     createHttpPingTask,
     createHttpRequestTask,
+    createSelfUpdateTask,
     createExecuteTask,
     createWebShellTask,
     createReadConfigTask,
     createEditConfigTask,
     createIpTask,
+    createVersionTask,
   };
 }

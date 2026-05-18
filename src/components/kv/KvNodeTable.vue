@@ -20,7 +20,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import NodeMetadataForm from "@/components/node/NodeMetadataForm.vue";
-import type { NodeItem, NodeMetadata } from "@/types/node";
+import type { NodeItem, NodeMetadata } from "@/types/agent";
 import { REGIONS } from "@/data/regions";
 import { useKv } from "@/composables/useKv";
 import { useNodeMetadata } from "@/composables/useNodeMetadata";
@@ -120,7 +120,7 @@ onMounted(loadNodes);
 const editDialogOpen = ref(false);
 const editingId = ref<string | null>(null);
 const editForm = ref<NodeMetadata>({
-  name: "",
+  customName: "",
   tags: [],
   price: 0,
   priceUnit: "",
@@ -128,13 +128,14 @@ const editForm = ref<NodeMetadata>({
   expireTime: "",
   region: "",
   hidden: false,
+  order: 0,
 });
 const saveLoading = ref(false);
 
 function handleEdit(node: NodeItem) {
   editingId.value = node.id;
   editForm.value = {
-    name: node.name,
+    customName: node.customName,
     tags: [...node.tags],
     price: node.price,
     priceUnit: node.priceUnit,
@@ -142,6 +143,7 @@ function handleEdit(node: NodeItem) {
     expireTime: node.expireTime,
     region: node.region,
     hidden: node.hidden,
+    order: node.order,
   };
   editDialogOpen.value = true;
 }
@@ -199,7 +201,7 @@ async function handleSaveEdit() {
     <TableBody>
       <TableRow v-for="node in nodes" :key="node.id">
         <TableCell class="font-medium">
-          {{ node.name }}
+          {{ node.customName }}
           <span
             class="ml-1.5 text-xs text-muted-foreground font-normal font-mono"
             >{{ node.id }}</span

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -28,12 +29,12 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "codemirror": "^6.0.2",
+    "compare-versions": "^6.1.1",
     "diff": "^8.0.4",
     "echarts": "^6.0.0",
     "fflate": "^0.8.2",
     "lucide-vue-next": "^0.563.0",
     "markdown-it": "^14.1.1",
-    "marked": "^18.0.0",
     "modern-screenshot": "^4.6.8",
     "pinia": "^3.0.4",
     "pinia-plugin-persistedstate": "^4.7.1",

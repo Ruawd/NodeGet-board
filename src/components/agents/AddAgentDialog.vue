@@ -30,6 +30,7 @@ import { useThemeStore } from "@/stores/theme";
 import { useBackendStore } from "@/composables/useBackendStore";
 import { getWsConnection } from "@/composables/useWsConnection";
 import { useCron, type BackendCron } from "@/composables/useCron";
+import { useKv } from "@/composables/useKv";
 import { useBackendExtra } from "@/composables/useBackendExtra";
 import { useLifecycle } from "@/composables/useLifecycle";
 import { preGenerateToken } from "@/components/agents/generateToken";
@@ -45,6 +46,7 @@ const themeStore = useThemeStore();
 const { currentBackendInfo } = useBackendExtra();
 const { list: listCrons } = useCron();
 const { afterAgentCreate } = useLifecycle();
+const kv = useKv();
 
 const step = ref(1);
 
@@ -80,6 +82,54 @@ const dynamicRetention = ref<number>(60 * 6);
 const dynamicSummaryRetention = ref<number>(60 * 24 * 30);
 const agentTaskRetention = ref<number>(60 * 6);
 
+const CRON_SELECTION_STORAGE_KEY = "addAgent_selectedCronIds";
+
+const saveCronSelection = () => {
+  try {
+    const ids = Array.from(selectedCronIds.value);
+    localStorage.setItem(CRON_SELECTION_STORAGE_KEY, JSON.stringify(ids));
+  } catch (e) {
+    console.error("Failed to save cron selection:", e);
+  }
+};
+
+const loadCronSelection = () => {
+  try {
+    const saved = localStorage.getItem(CRON_SELECTION_STORAGE_KEY);
+    if (saved) {
+      const ids = JSON.parse(saved) as number[];
+      selectedCronIds.value = new Set(ids);
+    }
+  } catch (e) {
+    console.error("Failed to load cron selection:", e);
+  }
+};
+
+async function getDbLimit() {
+  const namespace = "global";
+  kv.namespace.value = namespace;
+  const result = await kv.getMultiValue([
+    {
+      namespace,
+      key: "database_limit_*",
+    },
+  ]);
+  const oneMinute = 1000 * 60;
+  let r = result.find((v) => v.key === "database_limit_task");
+  if (r && typeof r.value === "number") {
+    agentTaskRetention.value = Math.floor(r.value / oneMinute);
+  }
+  r = result.find((v) => v.key === "database_limit_dynamic_monitoring");
+  if (r && typeof r.value === "number") {
+    dynamicRetention.value = Math.floor(r.value / oneMinute);
+  }
+  r = result.find((v) => v.key === "database_limit_dynamic_monitoring_summary");
+  if (r && typeof r.value === "number") {
+    dynamicSummaryRetention.value = Math.floor(r.value / oneMinute);
+  }
+}
+getDbLimit();
+
 const loadCrons = async () => {
   if (!currentBackendInfo.value) return;
   try {
@@ -88,8 +138,27 @@ const loadCrons = async () => {
     );
     cv.sort((a, b) => (a.name > b.name ? -1 : 1));
     cronList.value = cv;
+    // 加载上次保存的选择
+    loadCronSelection();
   } catch {
     cronList.value = [];
+  }
+};
+
+const isAllCronsSelected = () => {
+  return (
+    cronList.value.length > 0 &&
+    selectedCronIds.value.size === cronList.value.length
+  );
+};
+
+const toggleSelectAllCrons = () => {
+  if (isAllCronsSelected()) {
+    selectedCronIds.value.clear();
+  } else {
+    cronList.value.forEach((cron) => {
+      selectedCronIds.value.add(cron.id);
+    });
   }
 };
 
@@ -175,11 +244,11 @@ const installScript = computed(() => {
     "{Server_WS}";
   const serverName = currentBackendInfo.value?.name || "{Server_NAME}";
   return `bash <(curl -sL ${import.meta.env.VITE_INSTALL_URL}) install-agent  \\
-  --agent-id ${uuid} \\
-  --token ${token} \\
-  --server-ws ${serverWs} \\
-  --server-id ${currentBackendInfo.value?.uuid} \\
-  --server-name ${serverName}`;
+  --agent-id "${uuid}" \\
+  --token "${token}" \\
+  --server-ws "${serverWs}" \\
+  --server-id "${currentBackendInfo.value?.uuid}" \\
+  --server-name "${serverName}"`;
 });
 
 const editorExtensions = computed(() => [
@@ -234,6 +303,14 @@ const handleAdjustNode = () => {
     router.push(`/dashboard/node/${nodeUuid.value}/setting`);
   }
 };
+
+// 监听 selectedCronIds 变化，自动保存到 localStorage
+watch(
+  () => selectedCronIds.value.size,
+  () => {
+    saveCronSelection();
+  },
+);
 
 watch(open, (value) => {
   if (value) {
@@ -331,9 +408,23 @@ const steps = [
         <!-- Step 2: 预配置 -->
         <div v-if="step === 2" class="space-y-4 py-2">
           <div class="space-y-2">
-            <Label class="text-base">{{
-              t("dashboard.agents.cronSection")
-            }}</Label>
+            <div class="flex items-center justify-between">
+              <Label class="text-base">{{
+                t("dashboard.agents.cronSection")
+              }}</Label>
+              <Button
+                v-if="cronList.length > 0"
+                variant="ghost"
+                size="sm"
+                @click="toggleSelectAllCrons"
+              >
+                {{
+                  isAllCronsSelected()
+                    ? t("dashboard.cron.deselectAll")
+                    : t("dashboard.cron.selectAll")
+                }}
+              </Button>
+            </div>
             <div
               v-if="cronList.length === 0"
               class="text-sm text-muted-foreground py-2"
@@ -347,7 +438,8 @@ const steps = [
                 class="flex items-center gap-2"
               >
                 <Checkbox
-                  :checked="selectedCronIds.has(cron.id)"
+                  :id="`cron-${cron.id}`"
+                  :model-value="selectedCronIds.has(cron.id)"
                   @update:modelValue="
                     (v: unknown) => {
                       if (v) selectedCronIds.add(cron.id);
@@ -355,10 +447,15 @@ const steps = [
                     }
                   "
                 />
-                <span class="text-sm">{{ cron.name }}</span>
-                <span class="text-xs text-muted-foreground font-mono">
-                  {{ cron.cron_expression }}
-                </span>
+                <label
+                  :for="`cron-${cron.id}`"
+                  class="flex items-center gap-2 cursor-pointer select-none"
+                >
+                  <span class="text-sm">{{ cron.name }}</span>
+                  <span class="text-xs text-muted-foreground font-mono">
+                    {{ cron.cron_expression }}
+                  </span>
+                </label>
               </div>
             </div>
           </div>
