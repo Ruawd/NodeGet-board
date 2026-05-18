@@ -15,6 +15,7 @@ import {
   Menu,
   CloudDownload,
   Info,
+  Router,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -456,12 +457,17 @@ refresh();
                 "
               />
             </TableCell>
+            <TableCell class="font-medium">
+              <RouterLink
+                :to="`/dashboard/node/${agent.uuid}`"
+                class="hover:underline"
+              >
+                {{ agent?.metadata?.customName || "--" }}
+              </RouterLink>
+            </TableCell>
             <TableCell class="font-mono text-xs text-muted-foreground">
               {{ agent.uuid.slice(0, 8) }}
             </TableCell>
-            <TableCell class="font-medium">{{
-              agent?.metadata?.customName || "--"
-            }}</TableCell>
             <TableCell class="min-w-20">
               <Loader2
                 v-if="agent.ip === undefined"

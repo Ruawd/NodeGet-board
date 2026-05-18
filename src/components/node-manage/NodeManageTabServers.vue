@@ -10,6 +10,7 @@ import {
   CloudDownload,
   Loader2,
   Info,
+  Share2,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,7 @@ import { useLifecycle } from "@/composables/useLifecycle";
 import { useTask } from "@/composables/useTask";
 import { delay } from "@/lib/delay";
 import VersionDialog from "@/components/node-manage/VersionDialog.vue";
+import ShareDialog from "@/components/node-manage/ShareDialog.vue";
 import { compareVersions } from "compare-versions";
 import { getWsConnection } from "@/composables/useWsConnection";
 import codeCopy from "@/components/node-manage/codeCopy.vue";
@@ -69,6 +71,8 @@ bash <(curl -sL https://install.nodeget.com) update-server
 
 const addOpen = ref(false);
 const changeVersionOpen = ref(false);
+const shareOpen = ref(false);
+const shareBackend = ref<Backend | null>(null);
 const availableVersions = ref<string[]>([]);
 const pendingUpdateUrl = ref<string>("");
 const upgradeStatus = ref<Map<string, "waiting" | "upgrading" | "confirming">>(
@@ -228,6 +232,8 @@ watch(
         initForm.value.newUrl = decoded.url;
         initForm.value.newToken = decoded.token;
         addOpen.value = true;
+      } else {
+        toast.warning("Server already exists, no need to add again");
       }
     } catch {
       // 解码或解析失败时静默忽略
@@ -274,7 +280,14 @@ fetchVersion();
             {{ t("dashboard.servers.noServers") }}
           </TableEmpty>
           <TableRow v-for="backend in backends" :key="backend.url">
-            <TableCell class="font-medium">{{ backend.name }}</TableCell>
+            <TableCell class="font-medium" @click="handleManage(backend)">
+              <RouterLink
+                :to="`/dashboard/servers-detail/${encodeURIComponent(backend.url)}:::${encodeURIComponent(backend.token)}`"
+                class="hover:underline"
+              >
+                {{ backend.name }}
+              </RouterLink>
+            </TableCell>
             <TableCell class="font-mono text-xs text-muted-foreground">
               {{ serverInfo[backend.url]?.uuid ?? "--" }}
             </TableCell>
@@ -375,6 +388,18 @@ fetchVersion();
                 >
                   <CloudDownload class="h-4 w-4" />
                 </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  class="h-8 w-8"
+                  title="manage"
+                  @click="
+                    shareBackend = backend;
+                    shareOpen = true;
+                  "
+                >
+                  <Share2 class="h-4 w-4" />
+                </Button>
                 <PopConfirm
                   :title="t('dashboard.servers.refreshConfirmTitle')"
                   :description="t('dashboard.servers.refreshConfirmDesc')"
@@ -382,7 +407,12 @@ fetchVersion();
                   :cancel-text="t('dashboard.servers.deleteCancel')"
                   @confirm="afterServerCreate(backend, true)"
                 >
-                  <Button size="icon" variant="ghost" class="h-8 w-8">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    class="h-8 w-8"
+                    title="重新初始化"
+                  >
                     <RefreshCw class="h-4 w-4" />
                   </Button>
                 </PopConfirm>
@@ -390,6 +420,7 @@ fetchVersion();
                   size="icon"
                   variant="ghost"
                   class="h-8 w-8"
+                  title="manage"
                   @click="handleManage(backend)"
                 >
                   <Wrench class="h-4 w-4" />
@@ -427,5 +458,10 @@ fetchVersion();
       v-model:open="changeVersionOpen"
       @select-version="confirmVersion"
     ></VersionDialog>
+    <ShareDialog
+      v-if="shareOpen"
+      :backend="shareBackend as Backend"
+      v-model:open="shareOpen"
+    ></ShareDialog>
   </div>
 </template>
