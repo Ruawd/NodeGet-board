@@ -262,14 +262,14 @@ export function releaseWsConnection(url: string) {
   }
 }
 
-export function makeRpcFunction<T>(
+export function makeRpcFunction(
   backendUrl: string = currentBackend.value?.url as string,
 ) {
   if (typeof backendUrl !== "string") {
     throw "backendUrl can't be empty";
   }
 
-  const rpc = (
+  const rpc = <T>(
     method: string,
     params: unknown,
     timeoutMs: number = 5000,

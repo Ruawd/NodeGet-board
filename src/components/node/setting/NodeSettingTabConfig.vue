@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { NumberField } from "@/components/ui/number-field";
 import { Switch } from "@/components/ui/switch";
 import { PopConfirm } from "@/components/ui/pop-confirm";
+import { type TASK_NAME } from "@/types/task";
 import {
   useAgentConfig,
   type AgentConfig,
@@ -23,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useI18n } from "vue-i18n";
+import { fetchDynamic } from "@/composables/monitoring/useDynamicMonitoring";
 
 const props = defineProps<{ uuid: string }>();
 
@@ -44,20 +46,13 @@ const staticReportInterval = ref(3600000); // ms
 const terminalShell = ref<"bash" | "cmd">("bash");
 const execMaxCharacter = ref<number | undefined>(undefined);
 const connectTimeout = ref<number | undefined>(undefined);
+const dynamic_summary_select_disk = ref<string[]>([]);
+const dynamic_summary_select_network_interface = ref<string[]>([]);
+const dynamic_summary_select_disk_list = ref<string[]>([]);
+const dynamic_summary_select_network_interface_list = ref<string[]>([]);
 
 // 特性开关 (server config中的allow_*属性)
-const allowTask = ref(false);
-const allowIcmpPing = ref(false);
-const allowTcpPing = ref(false);
-const allowHttpPing = ref(false);
-const allowHttpRequest = ref(false);
-const allowSelfUpdate = ref(false);
-const allowWebShell = ref(false);
-const allowExecute = ref(false);
-const allowReadConfig = ref(false);
-const allowEditConfig = ref(false);
-const allowIp = ref(false);
-const allowVersion = ref(false);
+const allowTaskType = ref(new Set<TASK_NAME>());
 
 /**
  * 从 AgentConfig 对象更新 UI 状态
@@ -74,21 +69,14 @@ function syncFromConfig(config: splitConfig) {
   terminalShell.value = basicConfig.terminal_shell || "bash";
   execMaxCharacter.value = basicConfig.exec_max_character;
   connectTimeout.value = basicConfig.connect_timeout_ms;
+  dynamic_summary_select_network_interface.value =
+    basicConfig.dynamic_summary_select_network_interface || [];
+  dynamic_summary_select_disk.value =
+    basicConfig.dynamic_summary_select_disk || [];
 
   // 从 server 配置中提取第一个 server 的 allow_* 属性
   if (currentUpstream) {
-    allowTask.value = currentUpstream.allow_task === true;
-    allowIcmpPing.value = currentUpstream.allow_icmp_ping === true;
-    allowTcpPing.value = currentUpstream.allow_tcp_ping === true;
-    allowHttpPing.value = currentUpstream.allow_http_ping === true;
-    allowHttpRequest.value = currentUpstream.allow_http_request === true;
-    ((allowSelfUpdate.value = currentUpstream.allow_self_update === true),
-      (allowWebShell.value = currentUpstream.allow_web_shell === true));
-    allowExecute.value = currentUpstream.allow_execute === true;
-    allowReadConfig.value = currentUpstream.allow_read_config === true;
-    allowEditConfig.value = currentUpstream.allow_edit_config === true;
-    allowIp.value = currentUpstream.allow_edit_config === true;
-    allowVersion.value = currentUpstream.allow_version === true;
+    allowTaskType.value = new Set(currentUpstream.allow_task_type || []);
   }
 }
 
@@ -130,20 +118,22 @@ function buildConfig(): AgentConfig {
     config.connect_timeout_ms = connectTimeout.value;
   }
 
+  if (dynamic_summary_select_network_interface.value.length > 0) {
+    config.dynamic_summary_select_network_interface =
+      dynamic_summary_select_network_interface.value;
+  } else {
+    delete config.dynamic_summary_select_network_interface;
+  }
+
+  if (dynamic_summary_select_disk.value.length > 0) {
+    config.dynamic_summary_select_disk = dynamic_summary_select_disk.value;
+  } else {
+    delete config.dynamic_summary_select_disk;
+  }
+
   const currentUpstreamNew: UpstreamServer = {
     ...agentConfig.value.currentUpstream,
-    allow_task: allowTask.value,
-    allow_icmp_ping: allowIcmpPing.value,
-    allow_tcp_ping: allowTcpPing.value,
-    allow_http_ping: allowHttpPing.value,
-    allow_http_request: allowHttpRequest.value,
-    allow_self_update: allowSelfUpdate.value,
-    allow_web_shell: allowWebShell.value,
-    allow_execute: allowExecute.value,
-    allow_read_config: allowReadConfig.value,
-    allow_edit_config: allowEditConfig.value,
-    allow_ip: !!allowIp.value,
-    allow_version: !!allowVersion.value,
+    allow_task_type: Array.from(allowTaskType.value),
   };
 
   return {
@@ -169,6 +159,28 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+
+  fetchDynamic(props.uuid, ["network", "disk"], { limit: 1 }).then((res) => {
+    if (!res || !res.length) {
+      return;
+    }
+    const latest = res[0];
+    if (!latest) {
+      return;
+    }
+    if (
+      Array.isArray(latest.network?.interfaces) &&
+      latest.network.interfaces.length > 0
+    ) {
+      dynamic_summary_select_network_interface_list.value =
+        latest.network.interfaces.map((i) => i.interface_name);
+    }
+    if (Array.isArray(latest.disk) && latest.disk.length > 0) {
+      dynamic_summary_select_disk_list.value = latest.disk.map(
+        (d) => d.mount_point,
+      );
+    }
+  });
 });
 
 /**
@@ -181,9 +193,9 @@ async function handleSave() {
     const success = await writeAgentConfig(props.uuid, config);
 
     if (success) {
-      toast.success(t("dashboard.saveSuccess"));
       await delay(1000);
       agentConfig.value = await getAgentConfigExtra(props.uuid);
+      toast.success(t("dashboard.saveSuccess"));
     } else {
       toast.error(t("dashboard.saveFailed"));
     }
@@ -194,22 +206,6 @@ async function handleSave() {
   } finally {
     saveLoading.value = false;
   }
-}
-
-/**
- * 处理禁用 allow_edit_config
- */
-function handleEditConfigToggle(checked: boolean) {
-  if (!checked) {
-    // 触发确认弹窗
-    // 这里通过 PopConfirm 组件处理
-  } else {
-    allowEditConfig.value = true;
-  }
-}
-
-function confirmDisableEditConfig() {
-  allowEditConfig.value = false;
 }
 </script>
 
@@ -224,199 +220,349 @@ function confirmDisableEditConfig() {
     </div>
 
     <template v-else>
-      <!-- 日志等级 -->
-      <div class="space-y-1.5">
-        <Label>{{ $t("dashboard.node.config.logLevel") }}</Label>
-        <Select v-model="logLevel">
-          <SelectTrigger class="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="trace">trace</SelectItem>
-            <SelectItem value="debug">debug</SelectItem>
-            <SelectItem value="info">info</SelectItem>
-            <SelectItem value="warn">warn</SelectItem>
-            <SelectItem value="error">error</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <!-- IP 提供商 -->
-      <div class="space-y-1.5">
-        <Label>{{ $t("dashboard.node.config.ipProvider") }}</Label>
-        <Select v-model="ipProvider">
-          <SelectTrigger class="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ipinfo">Ipinfo</SelectItem>
-            <SelectItem value="cloudflare">Cloudflare</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <!-- 动态监控上报间隔 (ms) -->
-      <div class="space-y-1.5">
-        <Label>{{
-          $t("dashboard.node.config.dynamicSummaryReportInterval")
-        }}</Label>
-        <div class="flex items-center gap-2">
-          <NumberField
-            v-model="dynamicSummaryReportInterval"
-            :min="1000"
-            class="w-40"
-          />
-          <span class="text-sm text-muted-foreground">
-            {{ $t("dashboard.node.config.msUnit") }}
-          </span>
+      <div class="flex gap-10 gap-y-5 flex-wrap content-between w-full">
+        <!-- 日志等级 -->
+        <div class="space-y-1.5">
+          <Label>{{ $t("dashboard.node.config.logLevel") }}</Label>
+          <Select v-model="logLevel">
+            <SelectTrigger class="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="trace">trace</SelectItem>
+              <SelectItem value="debug">debug</SelectItem>
+              <SelectItem value="info">info</SelectItem>
+              <SelectItem value="warn">warn</SelectItem>
+              <SelectItem value="error">error</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      </div>
 
-      <!-- 动态监控上报间隔 (ms) -->
-      <div class="space-y-1.5">
-        <Label>{{ $t("dashboard.node.config.dynamicReportInterval") }}</Label>
-        <div class="flex items-center gap-2">
-          <NumberField
-            v-model="dynamicReportInterval"
-            :min="1000"
-            class="w-40"
-          />
-          <span class="text-sm text-muted-foreground">
-            {{ $t("dashboard.node.config.msUnit") }}
-          </span>
+        <!-- IP 提供商 -->
+        <div class="space-y-1.5">
+          <Label>{{ $t("dashboard.node.config.ipProvider") }}</Label>
+          <Select v-model="ipProvider">
+            <SelectTrigger class="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ipinfo">Ipinfo</SelectItem>
+              <SelectItem value="cloudflare">Cloudflare</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      </div>
 
-      <!-- 静态监控上报间隔 (ms) -->
-      <div class="space-y-1.5">
-        <Label>{{ $t("dashboard.node.config.staticReportInterval") }}</Label>
-        <div class="flex items-center gap-2">
-          <NumberField
-            v-model="staticReportInterval"
-            :min="1000"
-            class="w-40"
-          />
-          <span class="text-sm text-muted-foreground">
-            {{ $t("dashboard.node.config.msUnit") }}
-          </span>
+        <!-- 动态监控上报间隔 (ms) -->
+        <div class="space-y-1.5">
+          <Label>{{
+            $t("dashboard.node.config.dynamicSummaryReportInterval")
+          }}</Label>
+          <div class="flex items-center gap-2">
+            <NumberField
+              v-model="dynamicSummaryReportInterval"
+              :min="1000"
+              class="w-40"
+            />
+            <span class="text-sm text-muted-foreground">
+              {{ $t("dashboard.node.config.msUnit") }}
+            </span>
+          </div>
         </div>
-      </div>
 
-      <!-- 连接超时 (ms) -->
-      <div class="space-y-1.5">
-        <Label>{{ $t("dashboard.node.config.connectTimeout") }}</Label>
-        <div class="flex items-center gap-2">
+        <!-- 动态监控上报间隔 (ms) -->
+        <div class="space-y-1.5">
+          <Label>{{ $t("dashboard.node.config.dynamicReportInterval") }}</Label>
+          <div class="flex items-center gap-2">
+            <NumberField
+              v-model="dynamicReportInterval"
+              :min="1000"
+              class="w-40"
+            />
+            <span class="text-sm text-muted-foreground">
+              {{ $t("dashboard.node.config.msUnit") }}
+            </span>
+          </div>
+        </div>
+
+        <!-- 静态监控上报间隔 (ms) -->
+        <div class="space-y-1.5">
+          <Label>{{ $t("dashboard.node.config.staticReportInterval") }}</Label>
+          <div class="flex items-center gap-2">
+            <NumberField
+              v-model="staticReportInterval"
+              :min="1000"
+              class="w-40"
+            />
+            <span class="text-sm text-muted-foreground">
+              {{ $t("dashboard.node.config.msUnit") }}
+            </span>
+          </div>
+        </div>
+
+        <!-- 连接超时 (ms) -->
+        <div class="space-y-1.5">
+          <Label>{{ $t("dashboard.node.config.connectTimeout") }}</Label>
+          <div class="flex items-center gap-2">
+            <NumberField
+              :model-value="connectTimeout"
+              :min="0"
+              class="w-40"
+              @update:model-value="connectTimeout = $event"
+            />
+            <span class="text-sm text-muted-foreground">
+              {{ $t("dashboard.node.config.msUnit") }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Terminal Shell -->
+        <div class="space-y-1.5">
+          <Label>{{ $t("dashboard.node.config.terminalShell") }}</Label>
+          <Select v-model="terminalShell">
+            <SelectTrigger class="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="bash">bash</SelectItem>
+              <SelectItem value="cmd">cmd</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <!-- exec 最大返回字符数 -->
+        <div class="space-y-1.5">
+          <Label>{{ $t("dashboard.node.config.execMaxCharacter") }}</Label>
           <NumberField
-            :model-value="connectTimeout"
+            :model-value="execMaxCharacter"
             :min="0"
             class="w-40"
-            @update:model-value="connectTimeout = $event"
+            @update:model-value="execMaxCharacter = $event"
           />
-          <span class="text-sm text-muted-foreground">
-            {{ $t("dashboard.node.config.msUnit") }}
-          </span>
         </div>
-      </div>
 
-      <!-- Terminal Shell -->
-      <div class="space-y-1.5">
-        <Label>{{ $t("dashboard.node.config.terminalShell") }}</Label>
-        <Select v-model="terminalShell">
-          <SelectTrigger class="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="bash">bash</SelectItem>
-            <SelectItem value="cmd">cmd</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <!-- exec 最大返回字符数 -->
-      <div class="space-y-1.5">
-        <Label>{{ $t("dashboard.node.config.execMaxCharacter") }}</Label>
-        <NumberField
-          :model-value="execMaxCharacter"
-          :min="0"
-          class="w-40"
-          @update:model-value="execMaxCharacter = $event"
-        />
+        <!-- 磁盘 -->
+        <div class="space-y-1.5">
+          <Label>动态摘要监控磁盘</Label>
+          <Select
+            v-model="dynamic_summary_select_disk"
+            multiple
+            :disabled="dynamic_summary_select_disk_list.length === 0"
+          >
+            <SelectTrigger class="w-48">
+              <SelectValue
+                :placeholder="
+                  dynamic_summary_select_disk_list.length === 0
+                    ? '无可选磁盘'
+                    : '请选择磁盘'
+                "
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="disk in dynamic_summary_select_disk_list"
+                :key="disk"
+                :value="disk"
+              >
+                {{ disk }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <!-- 网卡 -->
+        <div class="space-y-1.5">
+          <Label>动态摘要监控网卡</Label>
+          <Select
+            v-model="dynamic_summary_select_network_interface"
+            multiple
+            :disabled="
+              dynamic_summary_select_network_interface_list.length === 0
+            "
+          >
+            <SelectTrigger class="w-48">
+              <SelectValue
+                :placeholder="
+                  dynamic_summary_select_network_interface_list.length === 0
+                    ? '无可选网卡'
+                    : '请选择网卡'
+                "
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="network in dynamic_summary_select_network_interface_list"
+                :key="network"
+                :value="network"
+              >
+                {{ network }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <!-- 启用特性 -->
       <div class="space-y-2">
         <Label>{{ $t("dashboard.node.config.enabledFeatures") }}</Label>
 
-        <!-- allow_task 放在最前面作为总开关 -->
-        <div class="flex items-center justify-between pb-2 border-b">
-          <span class="text-sm font-medium">{{
-            $t("dashboard.node.config.featureTask")
-          }}</span>
-          <Switch v-model:modelValue="allowTask" />
-        </div>
-
         <!-- 当 allow_task 开启时显示其他特性 -->
-        <template v-if="allowTask">
+        <template v-if="allowTaskType.size > 0">
           <div class="space-y-2 pt-2">
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureIcmpPing")
               }}</span>
-              <Switch v-model:modelValue="allowIcmpPing" />
+              <Switch
+                :modelValue="allowTaskType.has('ping')"
+                @update:model-value="
+                  (v) =>
+                    v ? allowTaskType.add('ping') : allowTaskType.delete('ping')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureTcpPing")
               }}</span>
-              <Switch v-model:modelValue="allowTcpPing" />
+              <Switch
+                :modelValue="allowTaskType.has('tcp_ping')"
+                @update:model-value="
+                  (v) =>
+                    v
+                      ? allowTaskType.add('tcp_ping')
+                      : allowTaskType.delete('tcp_ping')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureHttpPing")
               }}</span>
-              <Switch v-model:modelValue="allowHttpPing" />
+              <Switch
+                :modelValue="allowTaskType.has('http_ping')"
+                :disabled="!allowTaskType.has('edit_config')"
+                @update:model-value="
+                  (v) =>
+                    v
+                      ? allowTaskType.add('http_ping')
+                      : allowTaskType.delete('http_ping')
+                "
+              />
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm"> DNS </span>
+              <Switch
+                :modelValue="allowTaskType.has('dns')"
+                @update:model-value="
+                  (v) =>
+                    v ? allowTaskType.add('dns') : allowTaskType.delete('dns')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureHttpRequest")
               }}</span>
-              <Switch v-model:modelValue="allowHttpRequest" />
+              <Switch
+                :modelValue="allowTaskType.has('http_request')"
+                @update:model-value="
+                  (v) =>
+                    v
+                      ? allowTaskType.add('http_request')
+                      : allowTaskType.delete('http_request')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureSelfUpdate")
               }}</span>
-              <Switch v-model:modelValue="allowSelfUpdate" />
+              <Switch
+                :modelValue="allowTaskType.has('self_update')"
+                @update:model-value="
+                  (v) =>
+                    v
+                      ? allowTaskType.add('self_update')
+                      : allowTaskType.delete('self_update')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureWebShell")
               }}</span>
-              <Switch v-model:modelValue="allowWebShell" />
+              <Switch
+                :modelValue="allowTaskType.has('web_shell')"
+                @update:model-value="
+                  (v) =>
+                    v
+                      ? allowTaskType.add('web_shell')
+                      : allowTaskType.delete('web_shell')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureExecute")
               }}</span>
-              <Switch v-model:modelValue="allowExecute" />
+              <Switch
+                :modelValue="allowTaskType.has('execute')"
+                @update:model-value="
+                  (v) =>
+                    v
+                      ? allowTaskType.add('execute')
+                      : allowTaskType.delete('execute')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between gap-4">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureIp")
               }}</span>
-              <Switch v-model:modelValue="allowIp" />
+              <Switch
+                :modelValue="allowTaskType.has('ip')"
+                @update:model-value="
+                  (v) =>
+                    v ? allowTaskType.add('ip') : allowTaskType.delete('ip')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureVersion")
               }}</span>
-              <Switch v-model:modelValue="allowVersion" />
+              <Switch
+                :modelValue="allowTaskType.has('version')"
+                @update:model-value="
+                  (v) =>
+                    v
+                      ? allowTaskType.add('version')
+                      : allowTaskType.delete('version')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
                 $t("dashboard.node.config.featureReadConfig")
               }}</span>
-              <Switch v-model:modelValue="allowReadConfig" />
+              <Switch
+                :modelValue="allowTaskType.has('read_config')"
+                @update:model-value="
+                  (v) =>
+                    v
+                      ? allowTaskType.add('read_config')
+                      : allowTaskType.delete('read_config')
+                "
+                :disabled="!allowTaskType.has('edit_config')"
+              />
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">{{
@@ -426,17 +572,21 @@ function confirmDisableEditConfig() {
                 :title="
                   $t('dashboard.node.config.featureEditConfigConfirmTitle')
                 "
+                v-if="allowTaskType.has('edit_config')"
                 :description="
                   $t('dashboard.node.config.featureEditConfigConfirmDesc')
                 "
-                @confirm="confirmDisableEditConfig"
+                @confirm="allowTaskType.delete('edit_config')"
               >
-                <Switch
-                  :checked="allowEditConfig"
-                  :disabled="!allowEditConfig"
-                  @update:checked="handleEditConfigToggle"
-                />
+                <div>
+                  <Switch :modelValue="allowTaskType.has('edit_config')" />
+                </div>
               </PopConfirm>
+              <Switch
+                v-else
+                :modelValue="allowTaskType.has('edit_config')"
+                @update:model-value="allowTaskType.add('edit_config')"
+              />
             </div>
           </div>
         </template>

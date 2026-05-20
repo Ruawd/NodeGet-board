@@ -60,6 +60,7 @@ import { PopConfirm } from "@/components/ui/pop-confirm";
 import { compareVersions } from "compare-versions";
 import { useTask } from "@/composables/useTask";
 import { delay } from "@/lib/delay";
+import { applyPostProces } from "@/lib/migration";
 
 const { t } = useI18n();
 const router = useRouter();
@@ -258,6 +259,12 @@ async function confirmVersion(version: string) {
 
   for (let i = 0, len = uuids.length; i < len; i++) {
     const uuid = uuids[i] as string;
+    const agent = agents.value.find((v) => v.uuid === uuid);
+    if (!agent) {
+      continue;
+    }
+    const oldVersion = extractVersion(agent.version || "");
+
     upgradeStatus.value.set(uuid, "upgrading");
     await createSelfUpdateTask(uuid, "v" + version, false);
     await delay(800);
@@ -267,10 +274,6 @@ async function confirmVersion(version: string) {
     const waitInterval = 1000,
       maxWait = 12000;
     let finished = false;
-    const agent = agents.value.find((v) => v.uuid === uuid);
-    if (!agent) {
-      continue;
-    }
     for (let j = 0; j < maxWait; j += waitInterval) {
       try {
         await fetchAgentVersion(agent, waitInterval);
@@ -281,6 +284,16 @@ async function confirmVersion(version: string) {
         if (extractVersion(agent.version || "") === version) {
           upgradeStatus.value.delete(uuid);
           finished = true;
+
+          try {
+            await applyPostProces(uuid, oldVersion, version);
+          } catch (error) {
+            console.error("升级后处理失败", error);
+            toast.error(
+              `agent ${agent.metadata?.customName || agent.uuid} 升级后处理失败`,
+            );
+          }
+
           break;
         }
       } catch (error) {
@@ -426,8 +439,8 @@ refresh();
                 @update:modelValue="(v) => toggleSelectAll(!!v)"
               />
             </TableHead>
-            <TableHead>{{ t("dashboard.agents.colId") }}</TableHead>
             <TableHead>{{ t("dashboard.agents.colName") }}</TableHead>
+            <TableHead>{{ t("dashboard.agents.colId") }}</TableHead>
             <TableHead>{{ t("dashboard.agents.colIp") }}</TableHead>
             <TableHead>{{ t("dashboard.agents.colVersion") }}</TableHead>
             <TableHead class="text-right">{{
