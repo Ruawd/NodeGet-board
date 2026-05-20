@@ -45,7 +45,6 @@ const networkFilterSuggestionSnapshot = shallowRef<NetworkFilterSuggestion[]>(
   [],
 );
 const networkFilterSuggestionsOpen = ref(false);
-const networkDrawerWidth = ref(420);
 const statusFilter = ref("all");
 const kindFilter = ref("all");
 
@@ -402,8 +401,7 @@ function relayCopy(text: string, message?: string) {
         :on-row-click="selectRecord"
       />
       <RpcNetworkDrawer
-        v-if="selectedRecord"
-        v-model:width="networkDrawerWidth"
+        :open="!!selectedRecord"
         class="z-10"
         :record="selectedRecord"
         @close="closeDrawer"

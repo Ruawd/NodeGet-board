@@ -196,6 +196,7 @@ function suppressClickTemporarily() {
 <template>
   <button
     v-if="enabled"
+    v-show="!open"
     ref="buttonRef"
     type="button"
     class="fixed z-60 inline-flex h-11 touch-none items-center gap-2 rounded-full border bg-background/95 px-4 text-sm font-medium shadow-lg backdrop-blur transition select-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -213,7 +214,7 @@ function suppressClickTemporarily() {
     RPC
   </button>
 
-  <Dialog v-if="enabled" :open="open" @update:open="open = $event">
+  <Dialog :open="open" @update:open="open = $event">
     <DialogContent
       id="rpc-debug-panel-dialog"
       class="flex h-[calc(100vh-3rem)] max-h-[calc(100vh-3rem)] w-[calc(100vw-3rem)] max-w-[calc(100vw-3rem)] flex-col gap-3 overflow-hidden p-3 sm:max-w-[calc(100vw-3rem)] md:h-[calc(100vh-4rem)] md:max-h-[calc(100vh-4rem)] md:w-[calc(100vw-4rem)] md:max-w-[calc(100vw-4rem)] md:p-4"

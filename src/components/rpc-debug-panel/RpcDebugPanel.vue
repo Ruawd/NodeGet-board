@@ -52,11 +52,7 @@ function handleComposerSourceOpen(recordId: string) {
   <Card
     class="h-full max-h-full gap-0 overflow-hidden rounded-lg bg-background py-0"
   >
-    <Tabs
-      v-model="activeTab"
-      :unmount-on-hide="false"
-      class="flex min-h-0 flex-1 flex-col gap-0"
-    >
+    <Tabs v-model="activeTab" class="flex min-h-0 flex-1 flex-col gap-0">
       <header
         class="flex min-h-12 flex-none items-center justify-between gap-3 border-b px-4 py-1.5"
       >
@@ -104,36 +100,31 @@ function handleComposerSourceOpen(recordId: string) {
 
       <CardContent class="inset-0 flex min-h-0 flex-auto overflow-hidden p-0">
         <TabsContent
-          value="network"
+          :value="activeTab"
           class="m-0 h-full w-full overflow-hidden p-0"
         >
-          <RpcNetworkView @copy="copyText" @edit-record="handleRecordEdit" />
-        </TabsContent>
-        <TabsContent
-          value="composer"
-          class="m-0 h-full w-full overflow-hidden p-0"
-        >
-          <RpcComposerView
-            :pending-record="pendingComposerRecord"
-            @copied="(message) => toast.success(message || '已复制')"
-            @consumed-record="pendingComposerRecord = null"
-            @show-source-record="handleComposerSourceOpen"
-          />
-        </TabsContent>
-        <TabsContent
-          value="subscription"
-          class="m-0 h-full w-full overflow-hidden p-0"
-        >
-          <RpcStreamsView />
-        </TabsContent>
-        <TabsContent value="auth" class="m-0 h-full w-full overflow-hidden p-0">
-          <RpcAuthView @copy="copyText" />
-        </TabsContent>
-        <TabsContent
-          value="settings"
-          class="m-0 h-full w-full overflow-hidden p-0"
-        >
-          <RpcSettingsView />
+          <!-- 配合 KeepAlive 缓存内部切换的各个业务子组件 -->
+          <KeepAlive>
+            <RpcNetworkView
+              v-if="activeTab === 'network'"
+              @copy="copyText"
+              @edit-record="handleRecordEdit"
+            />
+
+            <RpcComposerView
+              v-else-if="activeTab === 'composer'"
+              :pending-record="pendingComposerRecord"
+              @copied="(message) => toast.success(message || '已复制')"
+              @consumed-record="pendingComposerRecord = null"
+              @show-source-record="handleComposerSourceOpen"
+            />
+
+            <RpcStreamsView v-else-if="activeTab === 'subscription'" />
+
+            <RpcAuthView v-else-if="activeTab === 'auth'" @copy="copyText" />
+
+            <RpcSettingsView v-else-if="activeTab === 'settings'" />
+          </KeepAlive>
         </TabsContent>
       </CardContent>
     </Tabs>
