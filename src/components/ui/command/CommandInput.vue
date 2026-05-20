@@ -4,6 +4,7 @@ import type { HTMLAttributes } from "vue";
 import { reactiveOmit } from "@vueuse/core";
 import { Search } from "lucide-vue-next";
 import { ListboxFilter, useForwardProps } from "reka-ui";
+import { computed, watch } from "vue";
 import { cn } from "@/lib/utils";
 import { useCommand } from ".";
 
@@ -21,12 +22,33 @@ const props = withDefaults(
     autoFocus: true,
   },
 );
+const emit = defineEmits<{
+  "update:modelValue": [value: string];
+}>();
 
-const delegatedProps = reactiveOmit(props, "class");
+const delegatedProps = reactiveOmit(props, "class", "modelValue");
 
 const forwardedProps = useForwardProps(delegatedProps);
 
 const { filterState } = useCommand();
+
+const inputValue = computed({
+  get: () => filterState.search,
+  set: (value: string) => {
+    filterState.search = value;
+    emit("update:modelValue", value);
+  },
+});
+
+watch(
+  () => props.modelValue,
+  (value) => {
+    if (value !== undefined && value !== filterState.search) {
+      filterState.search = value;
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -37,7 +59,7 @@ const { filterState } = useCommand();
     <Search class="size-4 shrink-0 opacity-50" />
     <ListboxFilter
       v-bind="{ ...forwardedProps, ...$attrs }"
-      v-model="filterState.search"
+      v-model="inputValue"
       data-slot="command-input"
       :class="
         cn(

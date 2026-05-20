@@ -25,6 +25,7 @@ import { useRpcDebugStore } from "../rpcDebugStore";
 import {
   downloadText,
   kindText,
+  rpcDebugCommandFilter,
   statusClass,
   statusText,
   timeText,
@@ -110,7 +111,7 @@ const filteredRecords = computed(() => {
     const matchesText =
       !q ||
       searchableValues.some((value) =>
-        matchesNetworkFilterValue(String(value ?? ""), q),
+        rpcDebugCommandFilter(String(value ?? ""), q),
       );
     const matchesStatus =
       statusFilter.value === "all" || record.status === statusFilter.value;
@@ -171,59 +172,6 @@ function handleNetworkFilterFocusOut(event: FocusEvent) {
   }
 
   networkFilterSuggestionsOpen.value = false;
-}
-
-function matchesNetworkFilterValue(value: string, search: string) {
-  const searchPattern = getNetworkFilterPattern(search);
-  if (!searchPattern.compact) {
-    return true;
-  }
-
-  const targetPattern = getNetworkFilterPattern(value);
-  if (!targetPattern.compact) {
-    return false;
-  }
-
-  if (targetPattern.compact.includes(searchPattern.compact)) {
-    return true;
-  }
-
-  if (isSubsequence(searchPattern.compact, targetPattern.compact)) {
-    return true;
-  }
-
-  return searchPattern.parts.every((part) =>
-    targetPattern.parts.some((targetPart) => targetPart.includes(part)),
-  );
-}
-
-function getNetworkFilterPattern(value: string) {
-  const parts = value
-    .normalize("NFKC")
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/gu)
-    .filter(Boolean);
-
-  return {
-    parts,
-    compact: parts.join(""),
-  };
-}
-
-function isSubsequence(search: string, target: string) {
-  let searchIndex = 0;
-
-  for (const char of target) {
-    if (char === search[searchIndex]) {
-      searchIndex += 1;
-    }
-
-    if (searchIndex === search.length) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 const networkColumns = computed<ColumnDef<RpcDebugRecord>[]>(() => [
@@ -308,7 +256,7 @@ function relayCopy(text: string, message?: string) {
       <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         <div class="relative min-w-55 flex-1 sm:max-w-[320px]">
           <Command
-            :filter="matchesNetworkFilterValue"
+            :filter="rpcDebugCommandFilter"
             :highlight-on-hover="true"
             class="relative h-9 w-full overflow-visible rounded-md border bg-background shadow-none [&_[data-slot=command-input-wrapper]]:h-9 [&_[data-slot=command-input-wrapper]]:border-b-0 [&_[data-slot=command-input-wrapper]]:px-2.5 [&_[data-slot=command-input]]:h-8 [&_[data-slot=command-input]]:py-1 [&_[data-slot=command-input]]:text-xs"
             @focusout="handleNetworkFilterFocusOut"

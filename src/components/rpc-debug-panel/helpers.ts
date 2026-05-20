@@ -68,3 +68,44 @@ export function downloadText(filename: string, content: string) {
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+export function rpcDebugCommandFilter(value: string, search: string) {
+  const normalizedValue = normalizeRpcDebugSearchText(value);
+  const normalizedSearch = normalizeRpcDebugSearchText(search);
+
+  if (!normalizedSearch) {
+    return true;
+  }
+
+  if (!normalizedValue) {
+    return false;
+  }
+
+  return (
+    normalizedValue.includes(normalizedSearch) ||
+    isRpcDebugSearchSubsequence(normalizedSearch, normalizedValue)
+  );
+
+  function normalizeRpcDebugSearchText(value: string) {
+    return value
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, "");
+  }
+
+  function isRpcDebugSearchSubsequence(search: string, value: string) {
+    let searchIndex = 0;
+
+    for (const char of value) {
+      if (char === search[searchIndex]) {
+        searchIndex += 1;
+      }
+
+      if (searchIndex === search.length) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+}
