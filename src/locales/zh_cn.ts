@@ -193,6 +193,9 @@ export default {
         rollSecretSuccess: "Token Secret 重新生成成功",
         rollSecretFailed: "Token Secret 重新生成失败",
         rollSecretFailedWithMessage: "Token Secret 重新生成失败：{message}",
+        changePasswordSuccess: "密码修改成功",
+        changePasswordFailed: "密码修改失败",
+        changePasswordFailedWithMessage: "密码修改失败：{message}",
       },
       list: {
         title: "Token 管理",
@@ -232,6 +235,20 @@ export default {
           title: "Token Secret 重新生成成功",
           description:
             "新的 Token Secret 只会显示这一次，请立即复制并妥善保存。旧 Secret 已失效。",
+        },
+        changePasswordDialog: {
+          title: "修改密码",
+          description: "更改该 Token 关联用户的登录密码。",
+          disabledTip: "该 Token 未设置用户名，无法修改密码",
+          newPassword: "请输入新密码",
+          confirmPassword: "请再次输入新密码",
+          confirmButton: "修改密码",
+          confirmingButton: "修改中...",
+          errors: {
+            required: "请输入新密码",
+            tooShort: "新密码长度不能少于 6 个字符",
+            mismatch: "两次输入的密码不一致",
+          },
         },
       },
       create: {

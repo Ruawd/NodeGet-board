@@ -7,3 +7,20 @@ export const normalizeRollTargetToken = (value: string | null | undefined) => {
 
   return normalized.slice(0, separatorIndex).trim();
 };
+
+export type PasswordChangeValidationError =
+  | ""
+  | "required"
+  | "tooShort"
+  | "mismatch";
+
+export const getPasswordChangeValidationError = (
+  password: string,
+  confirmPassword: string,
+): PasswordChangeValidationError => {
+  if (!password.trim()) return "required";
+  if (password.length < 6) return "tooShort";
+  if (password !== confirmPassword) return "mismatch";
+
+  return "";
+};

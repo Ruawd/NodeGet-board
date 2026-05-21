@@ -4,7 +4,10 @@ import { useBackendStore } from "@/composables/useBackendStore";
 import { getWsConnection } from "@/composables/useWsConnection";
 import { toast } from "vue-sonner";
 import { type TokenDetail } from "@/components/token/type";
-import { normalizeRollTargetToken } from "@/composables/token/tokenSecret";
+import {
+  getPasswordChangeValidationError,
+  normalizeRollTargetToken,
+} from "@/composables/token/tokenSecret";
 
 export type errorResponse = {
   error: {
@@ -141,6 +144,63 @@ export const useTokenListHook = () => {
     }
   };
 
+  const changeTokenPassword = async (
+    targetTokenValue: string,
+    newPassword: string,
+  ): Promise<boolean> => {
+    const url = backendUrl.value.trim();
+    const token = currentBackend.value?.token?.trim() || "";
+    const target_token = normalizeRollTargetToken(targetTokenValue);
+    if (
+      !url ||
+      !token ||
+      !target_token ||
+      getPasswordChangeValidationError(newPassword, newPassword)
+    ) {
+      return false;
+    }
+
+    try {
+      const result = await getWsConnection(url).call<{
+        success?: boolean;
+        message?: string;
+        error?: {
+          message?: string;
+        };
+      }>("token_change_password", {
+        token,
+        target_token,
+        new_password: newPassword,
+      });
+
+      if (result?.success) {
+        toast.success(t("dashboard.token.api.changePasswordSuccess"));
+        return true;
+      }
+
+      const message = result?.error?.message || result?.message || "";
+      toast.error(
+        message
+          ? t("dashboard.token.api.changePasswordFailedWithMessage", {
+              message,
+            })
+          : t("dashboard.token.api.changePasswordFailed"),
+      );
+      return false;
+    } catch (error) {
+      console.error(error);
+      const message = getTokenErrorMessage(error);
+      toast.error(
+        message
+          ? t("dashboard.token.api.changePasswordFailedWithMessage", {
+              message,
+            })
+          : t("dashboard.token.api.changePasswordFailed"),
+      );
+      return false;
+    }
+  };
+
   const getTokenDetailApi = async (
     searchToken: string,
   ): Promise<TokenDetail | null> => {
@@ -170,5 +230,11 @@ export const useTokenListHook = () => {
     getTokenList();
   });
 
-  return { getTokenList, deleteToken, getTokenDetailApi, rollTokenSecret };
+  return {
+    getTokenList,
+    deleteToken,
+    getTokenDetailApi,
+    rollTokenSecret,
+    changeTokenPassword,
+  };
 };

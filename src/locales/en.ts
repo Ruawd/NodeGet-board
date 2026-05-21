@@ -185,6 +185,9 @@ export default {
         rollSecretFailed: "Failed to regenerate token secret",
         rollSecretFailedWithMessage:
           "Failed to regenerate token secret: {message}",
+        changePasswordSuccess: "Password changed successfully",
+        changePasswordFailed: "Failed to change password",
+        changePasswordFailedWithMessage: "Failed to change password: {message}",
       },
       list: {
         title: "Token Management",
@@ -225,6 +228,22 @@ export default {
           title: "Token Secret Regenerated",
           description:
             "The new token secret will be shown only once. Copy and store it securely now. The previous secret is no longer valid.",
+        },
+        changePasswordDialog: {
+          title: "Change Password",
+          description:
+            "Change the login password for the user linked to this token.",
+          disabledTip:
+            "This token has no username, so its password cannot be changed",
+          newPassword: "Enter new password",
+          confirmPassword: "Enter new password again",
+          confirmButton: "Change Password",
+          confirmingButton: "Changing...",
+          errors: {
+            required: "Enter a new password",
+            tooShort: "Password must be at least 6 characters",
+            mismatch: "Passwords do not match",
+          },
         },
       },
       create: {

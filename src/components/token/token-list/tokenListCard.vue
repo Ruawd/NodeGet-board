@@ -32,8 +32,16 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Eye, Pencil, Trash2, RotateCcw, Search } from "lucide-vue-next";
+import {
+  Eye,
+  Pencil,
+  Trash2,
+  RotateCcw,
+  Search,
+  LockKeyhole,
+} from "lucide-vue-next";
 import { useTokenListHook, type Token } from "@/composables/token/useTokenList";
+import { getPasswordChangeValidationError } from "@/composables/token/tokenSecret";
 import TokenSuccessDialog from "../components/TokenSuccessDialog.vue";
 
 const useTokenList = useTokenListHook();
@@ -55,6 +63,11 @@ const resetTokenLoading = ref(false);
 const showResetTokenResult = ref(false);
 const isFirstLoad = ref(true);
 const selectedResetToken = ref<Token | null>(null);
+const changePasswordOpen = ref(false);
+const changePasswordLoading = ref(false);
+const selectedPasswordToken = ref<Token | null>(null);
+const newPassword = ref("");
+const confirmPassword = ref("");
 const rolledTokenInfo = ref({
   key: "",
   secret: "",
@@ -207,6 +220,62 @@ watch(resetTokenOpen, (open) => {
     resetTokenLoading.value = false;
   }
 });
+
+const changePasswordError = computed(() =>
+  getPasswordChangeValidationError(newPassword.value, confirmPassword.value),
+);
+
+const changePasswordErrorMessage = computed(() => {
+  if (!changePasswordError.value) return "";
+
+  return t(
+    `dashboard.token.list.changePasswordDialog.errors.${changePasswordError.value}`,
+  );
+});
+
+const handleOpenChangePassword = (token: Token) => {
+  if (!token.username) return;
+
+  selectedPasswordToken.value = token;
+  newPassword.value = "";
+  confirmPassword.value = "";
+  changePasswordOpen.value = true;
+};
+
+const handleConfirmChangePassword = () => {
+  if (
+    !selectedPasswordToken.value?.token_key ||
+    !selectedPasswordToken.value.username ||
+    changePasswordError.value
+  ) {
+    return;
+  }
+
+  changePasswordLoading.value = true;
+  useTokenList
+    .changeTokenPassword(
+      selectedPasswordToken.value.token_key,
+      newPassword.value,
+    )
+    .then((success) => {
+      if (success) {
+        changePasswordOpen.value = false;
+        handleGetTokenList();
+      }
+    })
+    .finally(() => {
+      changePasswordLoading.value = false;
+    });
+};
+
+watch(changePasswordOpen, (open) => {
+  if (!open) {
+    selectedPasswordToken.value = null;
+    newPassword.value = "";
+    confirmPassword.value = "";
+    changePasswordLoading.value = false;
+  }
+});
 </script>
 
 <template>
@@ -285,7 +354,7 @@ watch(resetTokenOpen, (open) => {
             <TableCell>{{ token.username }}</TableCell>
             <TableCell class="font-mono">{{ token.token_key }}</TableCell>
             <TableCell>{{ token.token_limit?.length ?? 0 }}</TableCell>
-            <TableCell class="flex gap-2 w-20">
+            <TableCell class="flex gap-2 w-32">
               <!-- 查看按钮 -->
               <Button
                 variant="ghost"
@@ -305,6 +374,20 @@ watch(resetTokenOpen, (open) => {
                 @click="handleOpenResetToken(token)"
               >
                 <RotateCcw />
+              </Button>
+              <!-- 修改密码按钮 -->
+              <Button
+                variant="ghost"
+                size="sm"
+                :disabled="!token.username"
+                :title="
+                  token.username
+                    ? t('dashboard.token.list.changePasswordDialog.title')
+                    : t('dashboard.token.list.changePasswordDialog.disabledTip')
+                "
+                @click="handleOpenChangePassword(token)"
+              >
+                <LockKeyhole />
               </Button>
               <!-- 删除操作 -->
               <Dialog>
@@ -444,6 +527,87 @@ watch(resetTokenOpen, (open) => {
           </div>
           <div v-else>
             {{ t("dashboard.token.list.resetDialog.confirmButton") }}
+          </div>
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  <!-- 修改密码弹窗 -->
+  <Dialog v-model:open="changePasswordOpen">
+    <DialogContent class="w-400">
+      <DialogHeader>
+        <DialogTitle>
+          {{ t("dashboard.token.list.changePasswordDialog.title") }}
+        </DialogTitle>
+        <DialogDescription>
+          {{ t("dashboard.token.list.changePasswordDialog.description") }}
+        </DialogDescription>
+      </DialogHeader>
+      <div class="space-y-4 py-2 text-sm">
+        <div class="rounded-md border bg-muted/40 p-3 space-y-1">
+          <div>
+            <span class="text-muted-foreground">
+              {{ t("dashboard.token.list.table.username") }}:
+            </span>
+            <span class="ml-2">
+              {{ selectedPasswordToken?.username || "-" }}
+            </span>
+          </div>
+          <div>
+            <span class="text-muted-foreground">
+              {{ t("dashboard.token.list.table.tokenKey") }}:
+            </span>
+            <span class="ml-2 font-mono">
+              {{ selectedPasswordToken?.token_key || "-" }}
+            </span>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <Input
+            v-model="newPassword"
+            type="password"
+            autocomplete="new-password"
+            :placeholder="
+              t('dashboard.token.list.changePasswordDialog.newPassword')
+            "
+          />
+          <Input
+            v-model="confirmPassword"
+            type="password"
+            autocomplete="new-password"
+            :placeholder="
+              t('dashboard.token.list.changePasswordDialog.confirmPassword')
+            "
+          />
+          <div
+            v-if="
+              (newPassword || confirmPassword) && changePasswordErrorMessage
+            "
+            class="text-sm text-red-500"
+          >
+            {{ changePasswordErrorMessage }}
+          </div>
+        </div>
+      </div>
+      <DialogFooter>
+        <DialogClose as-child>
+          <Button variant="outline" :disabled="changePasswordLoading">
+            {{ t("dashboard.token.cancel") }}
+          </Button>
+        </DialogClose>
+        <Button
+          :disabled="changePasswordLoading || !!changePasswordError"
+          @click="handleConfirmChangePassword"
+        >
+          <div v-if="changePasswordLoading" class="flex items-center">
+            <Spinner />{{
+              t("dashboard.token.list.changePasswordDialog.confirmingButton")
+            }}
+          </div>
+          <div v-else>
+            {{ t("dashboard.token.list.changePasswordDialog.confirmButton") }}
           </div>
         </Button>
       </DialogFooter>
