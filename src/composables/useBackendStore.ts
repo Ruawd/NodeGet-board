@@ -118,10 +118,7 @@ watch(
 );
 
 const addBackend = (backend: Backend) => {
-  const normalized: Backend = {
-    ...backend,
-    url: normalizeUrl(backend.url),
-  };
+  const normalized: Backend = backend;
   backends.value.push(normalized);
   if (!currentBackend.value) {
     currentBackend.value = normalized;

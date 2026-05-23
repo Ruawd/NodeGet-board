@@ -89,9 +89,7 @@ const initForm = ref<{
 });
 
 const handleManage = (backend: Backend) => {
-  router.push(
-    `/dashboard/servers-detail/${encodeURIComponent(backend.url)}:::${encodeURIComponent(backend.token)}`,
-  );
+  router.push(`/dashboard/servers-detail/${backend.name}`);
 };
 
 const handleSelect = async (backend: Backend) => {
@@ -198,7 +196,11 @@ function fetchVersion() {
   const repo = import.meta.env.VITE_RELEASE_REPO;
   return fetch(`https://api.github.com/repos/${repo}/releases`)
     .then((r) => r.json())
-    .then((r) => (r as { tag_name: string }[]).map((v) => v.tag_name))
+    .then((r) =>
+      (r as { tag_name: string }[])
+        .map((v) => v.tag_name)
+        .filter((v) => v.startsWith("v")),
+    )
     .then((r) => {
       availableVersions.value = r;
     })
