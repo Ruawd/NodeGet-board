@@ -283,9 +283,9 @@ watch(changePasswordOpen, (open) => {
     <div
       class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
     >
-      <div class="relative flex-1 max-w-sm">
+      <div class="relative max-w-sm flex-1">
         <Search
-          class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+          class="absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground"
         />
         <Input
           v-model="searchKeyword"
@@ -354,7 +354,7 @@ watch(changePasswordOpen, (open) => {
             <TableCell>{{ token.username }}</TableCell>
             <TableCell class="font-mono">{{ token.token_key }}</TableCell>
             <TableCell>{{ token.token_limit?.length ?? 0 }}</TableCell>
-            <TableCell class="flex gap-2 w-32">
+            <TableCell class="flex w-32 gap-2">
               <!-- 查看按钮 -->
               <Button
                 variant="ghost"
@@ -439,7 +439,7 @@ watch(changePasswordOpen, (open) => {
         </TableBody>
       </Table>
 
-      <div class="w-full flex content-between">
+      <div class="flex w-full content-between">
         <Pagination
           v-slot="{ page: currentPage }"
           v-model:page="page"
@@ -494,7 +494,7 @@ watch(changePasswordOpen, (open) => {
         <div class="text-muted-foreground">
           {{ t("dashboard.token.list.resetDialog.confirm") }}
         </div>
-        <div class="rounded-md border bg-muted/40 p-3 space-y-1">
+        <div class="space-y-1 rounded-md border bg-muted/40 p-3">
           <div>
             <span class="text-muted-foreground">
               {{ t("dashboard.token.list.table.username") }}:
@@ -545,7 +545,7 @@ watch(changePasswordOpen, (open) => {
         </DialogDescription>
       </DialogHeader>
       <div class="space-y-4 py-2 text-sm">
-        <div class="rounded-md border bg-muted/40 p-3 space-y-1">
+        <div class="space-y-1 rounded-md border bg-muted/40 p-3">
           <div>
             <span class="text-muted-foreground">
               {{ t("dashboard.token.list.table.username") }}:
